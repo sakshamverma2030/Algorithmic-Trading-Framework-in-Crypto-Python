@@ -97,6 +97,7 @@ python main.py calendar --source synthetic                      # calendar-anoma
 python main.py divergence --source synthetic                    # Aroon / RSI divergence backtest
 python main.py hurst --source synthetic                         # Hurst-exponent regime filter + RSI
 python main.py portfolio --source synthetic                     # K-Means clustering + momentum-alpha portfolio
+python scripts/compare_all.py --symbol BTC/USDT                 # all-strategy scorecard + equity chart
 ```
 
 Useful flags: `--allow-short` (derivatives / margin only), `--cross-lookback N`, `--no-chikou`,
