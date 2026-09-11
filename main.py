@@ -12,6 +12,7 @@ Examples
     python main.py compare                            standard vs crypto vs crypto_slow vs dynamic
     python main.py optimize --metric sharpe           in-sample / out-of-sample grid search
     python main.py live --feed ccxtpro                paper trading on live Binance WebSocket data
+    python main.py live --live-strategy momentum       paper trade the momentum strategy instead
     python main.py live --feed replay --source synthetic   offline paper-trading replay
     python main.py live --mode LIVE_TRADING           real orders (testnet unless EXCHANGE_USE_TESTNET=false)
 """
@@ -77,13 +78,14 @@ from config import (  # noqa: E402
     RegimeMethod,
     SizingMethod,
     StopMethod,
+    StrategyKind,
     TradingMode,
     TrailingMethod,
     load_config,
     setup_logging,
 )
 from data_loader import DataLoader, DataLoaderError  # noqa: E402
-from live_trader import LiveTradingError, run_async, run_live_session, warmup_bars_needed  # noqa: E402
+from live_trader import LiveTradingError, build_strategy, run_async, run_live_session, warmup_bars_needed  # noqa: E402
 from momentum import MomentumStrategy  # noqa: E402
 from pairs import CointegrationAnalyzer, PairsBacktester  # noqa: E402
 from strategy import IchimokuStrategy  # noqa: E402
@@ -188,6 +190,7 @@ def _add_live_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--speed", type=float, help="seconds between replayed bars")
     p.add_argument("--flatten-on-exit", action="store_true", help="close open positions on shutdown")
     p.add_argument("--confirm-live", action="store_true", help="skip the interactive LIVE_TRADING confirmation")
+    p.add_argument("--live-strategy", choices=[s.value for s in StrategyKind], help="strategy for the live engine")
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -278,6 +281,8 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         live = replace(live, replay_speed=opt("speed"))
     if opt("flatten_on_exit"):
         live = replace(live, flatten_on_exit=True)
+    if opt("live_strategy"):
+        live = replace(live, live_strategy=StrategyKind(opt("live_strategy")))
 
     momentum = replace(
         cfg.momentum,
@@ -481,7 +486,7 @@ class TradingBotCLI:
         if cfg.live.feed is FeedType.REPLAY:
             replay = self.data().tail(warmup_bars_needed(cfg) + cfg.live.replay_bars)
         banner(f"REAL-TIME ENGINE: {cfg.live.mode.value} | feed={cfg.live.feed.value} | "
-               f"{cfg.data.symbol} {cfg.data.timeframe}  (Ctrl+C to stop)")
+               f"{build_strategy(cfg).name} | {cfg.data.symbol} {cfg.data.timeframe}  (Ctrl+C to stop)")
         if cfg.live.feed is not FeedType.REPLAY:
             print(f" Signals are evaluated on closed {cfg.data.timeframe} candles; the first decision arrives when "
                   "the current candle closes. Stops are monitored on every order-book update.")
@@ -545,7 +550,7 @@ class TradingBotCLI:
         while True:
             c = self.cfg
             banner(f"CRYPTO ALGO TRADING SYSTEM | {c.data.symbol} {c.data.timeframe} | "
-                   f"{c.strategy.label} | {c.live.mode.value}")
+                   f"{build_strategy(c).name} | {c.live.mode.value}")
             print(f" data: {c.data.source.value}, {c.data.history_days} days | sizing: {c.risk.sizing_method.value} "
                   f"| stop: {c.risk.stop_method.value} | trailing: {c.risk.trailing_method.value} | "
                   f"feed: {c.live.feed.value}")
@@ -592,6 +597,8 @@ class TradingBotCLI:
         stop = _prompt("Stop method", c.risk.stop_method.value, str, [m.value for m in StopMethod])
         trailing = _prompt("Trailing stop", c.risk.trailing_method.value, str, [m.value for m in TrailingMethod])
         feed = _prompt("Live feed", c.live.feed.value, str, [f.value for f in FeedType])
+        live_strategy = _prompt("Live strategy", c.live.live_strategy.value, str,
+                                [s.value for s in StrategyKind])
 
         strategy = replace(c.strategy, allow_short=allow_short)
         if preset == "dynamic":
@@ -606,7 +613,7 @@ class TradingBotCLI:
                 risk=replace(c.risk, initial_capital=capital, sizing_method=SizingMethod(sizing),
                              risk_per_trade=risk_pt, stop_method=StopMethod(stop),
                              trailing_method=TrailingMethod(trailing)),
-                live=replace(c.live, feed=FeedType(feed)),
+                live=replace(c.live, feed=FeedType(feed), live_strategy=StrategyKind(live_strategy)),
             )
             print(" Settings updated.")
         except (ConfigError, ValueError) as exc:

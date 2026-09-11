@@ -214,3 +214,26 @@ def test_cli_parses_new_strategy_flags():
     prs = build_config(parse_args(["pairs", "--pair", "LTC/USDT", "--entry-z", "1.5", "--raw-prices"]))
     assert prs.pairs.quote_symbol == "LTC/USDT" and prs.pairs.entry_zscore == 1.5
     assert not prs.pairs.use_log_prices
+
+
+# ----------------------------------------------------------------------------- live strategy selection
+def test_live_strategy_factory_selects_momentum():
+    from main import build_config, parse_args
+    from config import StrategyKind
+    from live_trader import build_strategy, warmup_bars_needed
+    from momentum import MomentumStrategy
+    from strategy import IchimokuStrategy
+
+    default = build_config(parse_args(["live"]))
+    assert default.live.live_strategy is StrategyKind.ICHIMOKU
+    assert isinstance(build_strategy(default), IchimokuStrategy)
+    assert warmup_bars_needed(default) == max(default.live.warmup_bars, IchimokuStrategy(default.strategy).history_bars)
+
+    mom = build_config(parse_args(["live", "--live-strategy", "momentum"]))
+    assert mom.live.live_strategy is StrategyKind.MOMENTUM
+    assert isinstance(build_strategy(mom), MomentumStrategy)
+    assert warmup_bars_needed(mom) == max(mom.live.warmup_bars, MomentumStrategy(mom.momentum).history_bars)
+
+    strategy = build_strategy(mom)
+    assert strategy.name == mom.momentum.label
+    assert strategy.allow_short == mom.momentum.allow_short

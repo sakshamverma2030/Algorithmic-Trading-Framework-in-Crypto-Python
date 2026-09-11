@@ -45,6 +45,11 @@ class MomentumStrategy:
         return self.cfg.label
 
     @property
+    def allow_short(self) -> bool:
+        """Whether the strategy config permits short entries."""
+        return self.cfg.allow_short
+
+    @property
     def warmup_bars(self) -> int:
         """Bars needed before every indicator is defined."""
         c = self.cfg

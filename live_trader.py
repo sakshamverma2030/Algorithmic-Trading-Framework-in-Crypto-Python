@@ -25,8 +25,9 @@ How the engine avoids event-loop starvation
 5. Stream coroutines are supervised: on error they reconnect with exponential
    back-off and jitter instead of crashing the engine.
 
-Research/production parity: the engine reuses ``IchimokuStrategy`` and the
-``risk`` module (sizing, stops, circuit breaker) exactly as the backtester does.
+Research/production parity: the engine reuses the selected ``IchimokuStrategy`` or
+``MomentumStrategy`` and the ``risk`` module (sizing, stops, circuit breaker) exactly
+as the backtester does.
 """
 
 from __future__ import annotations
@@ -48,8 +49,9 @@ from typing import Any, Generic, TypeVar
 
 import pandas as pd
 
-from config import AppConfig, ConfigError, FeedType, TradingMode, timeframe_to_minutes
+from config import AppConfig, ConfigError, FeedType, StrategyKind, TradingMode, timeframe_to_minutes
 from data_loader import OHLCV_COLUMNS, ohlcv_frame
+from momentum import MomentumStrategy
 from risk import (
     LONG,
     SHORT,
@@ -811,7 +813,7 @@ class LiveTradingEngine:
         self.feed = feed
         self.bus = bus or EventBus()
         self.executor = executor or build_execution_handler(cfg, self.bus)
-        self.strategy = IchimokuStrategy(cfg.strategy)
+        self.strategy = build_strategy(cfg)
         self.sizer = build_position_sizer(cfg.risk)
         self.stops = StopManager(cfg.risk)
         self.breaker = CircuitBreaker.from_config(cfg.risk, cfg.data.timeframe)
@@ -842,7 +844,7 @@ class LiveTradingEngine:
         if mode is TradingMode.LIVE_TRADING:
             if isinstance(self.feed, ReplayFeed):
                 raise ConfigError("The replay feed cannot be combined with LIVE_TRADING")
-            if self.cfg.strategy.allow_short and self.cfg.exchange.market_type == "spot":
+            if self.strategy.allow_short and self.cfg.exchange.market_type == "spot":
                 raise ConfigError("Short selling needs a derivatives/margin market (exchange.market_type)")
         if self.executor.mode is not mode:
             raise ConfigError(f"Executor mode {self.executor.mode.value} does not match configured mode {mode.value}")
@@ -1002,7 +1004,7 @@ class LiveTradingEngine:
                    self.position.side if self.position else 0, equity)
 
     async def _act(self, snap: SignalSnapshot, halted: bool) -> None:
-        allow_short = self.cfg.strategy.allow_short
+        allow_short = self.strategy.allow_short
         pos = self.position
         if pos is None:
             if halted:
@@ -1128,9 +1130,17 @@ def build_execution_handler(cfg: AppConfig, bus: EventBus) -> ExecutionHandler:
     return PaperExecutionHandler(cfg, bus)
 
 
+def build_strategy(cfg: AppConfig) -> IchimokuStrategy | MomentumStrategy:
+    """The signal generator selected by ``cfg.live.live_strategy`` (shared with the backtester)."""
+    if cfg.live.live_strategy is StrategyKind.MOMENTUM:
+        return MomentumStrategy(cfg.momentum)
+    return IchimokuStrategy(cfg.strategy)
+
+
 def warmup_bars_needed(cfg: AppConfig) -> int:
     """Closed bars loaded before the engine starts (enough for fully converged indicators)."""
-    return max(cfg.live.warmup_bars, IchimokuStrategy(cfg.strategy).history_bars)
+    strategy = build_strategy(cfg)
+    return max(cfg.live.warmup_bars, strategy.history_bars)
 
 
 def build_feed(cfg: AppConfig, replay_data: pd.DataFrame | None = None) -> MarketDataFeed:

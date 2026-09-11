@@ -122,6 +122,13 @@ class FeedType(str, Enum):
     REPLAY = "replay"     # historical bar replay through the live engine (offline demo)
 
 
+class StrategyKind(str, Enum):
+    """Which strategy the real-time / live engine runs."""
+
+    ICHIMOKU = "ichimoku"  # validated static / adaptive Ichimoku (strategy section)
+    MOMENTUM = "momentum"  # long / short momentum (momentum section)
+
+
 # --------------------------------------------------------------------------------------
 # Timeframes & annualisation
 # --------------------------------------------------------------------------------------
@@ -469,6 +476,9 @@ class LiveConfig:
     replay_bars: int = 500                # bars replayed by the offline ReplayFeed
     replay_speed: float = 0.0             # seconds between replayed bars (0 = as fast as possible)
     journal_db_path: Path = JOURNAL_DB_PATH
+    live_strategy: StrategyKind = field(
+        default_factory=lambda: StrategyKind(_env_str("LIVE_STRATEGY", StrategyKind.ICHIMOKU.value))
+    )
 
 
 @dataclass(frozen=True)
