@@ -1,0 +1,13 @@
+# Core (Python 3.10+)
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+ccxt>=4.2            # REST + WebSocket market data / orders (ccxt.pro is bundled since v4)
+
+# Testing
+pytest>=7.4
+
+# Optional accelerators / formats (the code falls back gracefully without them)
+# TA-Lib>=0.5        # C implementations of rolling MAX/MIN and ATR
+# pyarrow>=14        # Parquet export
