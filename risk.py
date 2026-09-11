@@ -41,6 +41,7 @@ class ExitReason(str, Enum):
     REVERSAL = "reversal"
     CIRCUIT_BREAKER = "circuit_breaker"
     END_OF_DATA = "end_of_data"
+    TIME_STOP = "time_stop"           # max-hold exit (e.g. a spread that never reverted)
     SHUTDOWN = "shutdown"
 
 

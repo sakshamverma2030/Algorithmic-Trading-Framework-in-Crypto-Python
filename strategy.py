@@ -59,6 +59,7 @@ class SignalSnapshot:
     cloud_bottom: float
     atr: float
     regime: int | None = None
+    rsi: float | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -147,12 +148,32 @@ class IchimokuStrategy:
         exit_long = below_cloud | bear_cross
         exit_short = above_cloud | bull_cross
 
+        # RSI overlay: avoid chasing overbought rallies, exit when the trend exhausts,
+        # and (optionally) only take entries that form an RSI/price divergence.
+        rsi = ind["rsi"]
+        rsi_x_overbought = (rsi.shift(1) < cfg.rsi_overbought) & (rsi >= cfg.rsi_overbought)
+        rsi_x_oversold = (rsi.shift(1) > cfg.rsi_oversold) & (rsi <= cfg.rsi_oversold)
+        if cfg.use_rsi_filter:
+            not_overbought = (rsi < cfg.rsi_overbought).fillna(False)
+            not_oversold = (rsi > cfg.rsi_oversold).fillna(False)
+            long_entry &= not_overbought
+            short_entry &= not_oversold
+            exit_long = exit_long | rsi_x_overbought.fillna(False)
+            exit_short = exit_short | rsi_x_oversold.fillna(False)
+        if cfg.use_rsi_divergence:
+            recent_bull_div = ind["rsi_bull_div"].rolling(cfg.divergence_lookback, min_periods=1).max() > 0
+            recent_bear_div = ind["rsi_bear_div"].rolling(cfg.divergence_lookback, min_periods=1).max() > 0
+            long_entry &= recent_bull_div
+            short_entry &= recent_bear_div
+
         ind["above_cloud"] = above_cloud
         ind["below_cloud"] = below_cloud
         ind["tk_bull_cross"] = bull_cross
         ind["tk_bear_cross"] = bear_cross
         ind["chikou_bull"] = chikou_bull
         ind["chikou_bear"] = chikou_bear
+        ind["rsi_x_overbought"] = rsi_x_overbought
+        ind["rsi_x_oversold"] = rsi_x_oversold
         ind["long_entry"] = long_entry
         ind["short_entry"] = short_entry
         ind["exit_long"] = exit_long
@@ -207,4 +228,5 @@ class IchimokuStrategy:
             cloud_bottom=float(row["cloud_bottom"]),
             atr=float(row["atr"]),
             regime=int(row["regime"]) if "regime" in sig.columns else None,
+            rsi=float(row["rsi"]) if "rsi" in sig.columns and np.isfinite(row["rsi"]) else None,
         )

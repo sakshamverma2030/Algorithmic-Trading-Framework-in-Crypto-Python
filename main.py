@@ -74,6 +74,7 @@ from config import (  # noqa: E402
     DataSource,
     FeedType,
     IchimokuParams,
+    RegimeMethod,
     SizingMethod,
     StopMethod,
     TradingMode,
@@ -83,11 +84,13 @@ from config import (  # noqa: E402
 )
 from data_loader import DataLoader, DataLoaderError  # noqa: E402
 from live_trader import LiveTradingError, run_async, run_live_session, warmup_bars_needed  # noqa: E402
+from momentum import MomentumStrategy  # noqa: E402
+from pairs import CointegrationAnalyzer, PairsBacktester  # noqa: E402
 from strategy import IchimokuStrategy  # noqa: E402
 
 logger = logging.getLogger("main")
 
-COMMANDS = ("menu", "fetch", "backtest", "compare", "optimize", "live", "pipeline")
+COMMANDS = ("menu", "fetch", "backtest", "compare", "optimize", "momentum", "pairs", "live", "pipeline")
 
 
 # ======================================================================================
@@ -114,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--cross-lookback", type=int, help="bars a TK cross stays valid (default 1)")
     s.add_argument("--no-chikou", action="store_true", help="disable the Chikou confirmation rule")
     s.add_argument("--kumo-twist", action="store_true", help="require the leading cloud to match the trade")
+    s.add_argument("--rsi", action="store_true", help="RSI overlay: block overbought entries, exit on RSI exhaustion")
+    s.add_argument("--rsi-period", type=int, help="RSI smoothing period (default 14)")
+    s.add_argument("--rsi-overbought", type=float, help="RSI overbought threshold (default 70)")
+    s.add_argument("--rsi-oversold", type=float, help="RSI oversold threshold (default 30)")
+    s.add_argument("--rsi-divergence", action="store_true", help="only enter on a causal RSI/price divergence")
+    s.add_argument("--divergence-lookback", type=int, help="divergence detection window (default 10)")
+    s.add_argument("--regime", choices=[m.value for m in RegimeMethod], help="dynamic regime detector")
 
     r = common.add_argument_group("risk & execution costs")
     r.add_argument("--capital", type=float, help="initial capital in quote currency")
@@ -145,6 +155,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("compare", parents=[common], help="compare Ichimoku presets")
     opt = sub.add_parser("optimize", parents=[common], help="in-sample / out-of-sample parameter grid search")
     opt.add_argument("--metric", choices=["sharpe", "sortino", "cagr"], default="sharpe")
+    mom = sub.add_parser("momentum", parents=[common], help="backtest the long/short momentum strategy")
+    mom.add_argument("--engine", choices=["event", "vectorised", "both"], default="both")
+    mom.add_argument("--mom-lookback", type=int, help="momentum window in bars (default 20)")
+    mom.add_argument("--mom-entry", type=float, help="lookback return to enter, e.g. 0.02 = 2%%")
+    mom.add_argument("--mom-exit", type=float, help="momentum below which the long closes")
+    mom.add_argument("--mom-sma", type=int, help="SMA trend-filter period (default 50)")
+    mom.add_argument("--mom-require-sma", action="store_true", help="long entries need Close > SMA")
+    mom.add_argument("--mom-short", action="store_true", help="allow symmetric short entries")
+    pr = sub.add_parser("pairs", parents=[common], help="statistical-arbitrage backtest of two symbols")
+    pr.add_argument("--pair", help="second symbol, e.g. ETH/USDT")
+    pr.add_argument("--pairs-lookback", type=int, help="rolling cointegration window (default 60)")
+    pr.add_argument("--entry-z", type=float, help="z-score to open a spread position (default 2.0)")
+    pr.add_argument("--exit-z", type=float, help="z-score to close (mean reversion completed)")
+    pr.add_argument("--stop-z", type=float, help="z-score stop-loss (default 3.5)")
+    pr.add_argument("--max-hold", type=int, help="bars after which an open spread is force-closed")
+    pr.add_argument("--min-corr", type=float, help="minimum rolling correlation to open")
+    pr.add_argument("--raw-prices", action="store_true", help="cointegrate raw prices instead of log prices")
     live = sub.add_parser("live", parents=[common], help="launch the real-time paper / live trader")
     _add_live_args(live)
     pipe = sub.add_parser("pipeline", parents=[common], help="fetch -> backtest -> charts -> paper trader")
@@ -204,6 +231,17 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         require_chikou=strategy.require_chikou and not opt("no_chikou"),
         require_kumo_twist=bool(opt("kumo_twist")) or strategy.require_kumo_twist,
     )
+    strategy = replace(
+        strategy,
+        use_rsi_filter=bool(opt("rsi")) or strategy.use_rsi_filter,
+        rsi_period=opt("rsi_period") or strategy.rsi_period,
+        rsi_overbought=opt("rsi_overbought") or strategy.rsi_overbought,
+        rsi_oversold=opt("rsi_oversold") or strategy.rsi_oversold,
+        use_rsi_divergence=bool(opt("rsi_divergence")) or strategy.use_rsi_divergence,
+        divergence_lookback=opt("divergence_lookback") or strategy.divergence_lookback,
+    )
+    if opt("regime"):
+        strategy = replace(strategy, regime_method=RegimeMethod(opt("regime")))
 
     risk = cfg.risk
     if opt("capital"):
@@ -241,8 +279,30 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     if opt("flatten_on_exit"):
         live = replace(live, flatten_on_exit=True)
 
+    momentum = replace(
+        cfg.momentum,
+        lookback=opt("mom_lookback") or cfg.momentum.lookback,
+        entry_threshold=opt("mom_entry") if opt("mom_entry") is not None else cfg.momentum.entry_threshold,
+        exit_threshold=opt("mom_exit") if opt("mom_exit") is not None else cfg.momentum.exit_threshold,
+        sma_period=opt("mom_sma") or cfg.momentum.sma_period,
+        require_above_sma=bool(opt("mom_require_sma")) or cfg.momentum.require_above_sma,
+        allow_short=bool(opt("mom_short")) or cfg.momentum.allow_short,
+    )
+    pairs = replace(
+        cfg.pairs,
+        base_symbol=data.symbol,
+        quote_symbol=opt("pair") or cfg.pairs.quote_symbol,
+        lookback=opt("pairs_lookback") or cfg.pairs.lookback,
+        entry_zscore=opt("entry_z") if opt("entry_z") is not None else cfg.pairs.entry_zscore,
+        exit_zscore=opt("exit_z") if opt("exit_z") is not None else cfg.pairs.exit_zscore,
+        stop_zscore=opt("stop_z") if opt("stop_z") is not None else cfg.pairs.stop_zscore,
+        max_hold_bars=opt("max_hold") or cfg.pairs.max_hold_bars,
+        min_correlation=opt("min_corr") if opt("min_corr") is not None else cfg.pairs.min_correlation,
+        use_log_prices=cfg.pairs.use_log_prices and not bool(opt("raw_prices")),
+    )
+
     return AppConfig(exchange=exchange, data=data, strategy=strategy, costs=costs, risk=risk,
-                     backtest=cfg.backtest, live=live)
+                     backtest=cfg.backtest, live=live, momentum=momentum, pairs=pairs)
 
 
 # ======================================================================================
@@ -301,8 +361,16 @@ class TradingBotCLI:
         return df
 
     def backtest(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
+        result, report = self._run_backtest(IchimokuStrategy(self.cfg.strategy), engine)
+        if self.plots:
+            charts = self._visualizer().create_all(result, report)
+            print(" Charts:")
+            for path in charts:
+                print(f"   {path}")
+        return result, report
+
+    def _run_backtest(self, strategy: Any, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
         df = self.data()
-        strategy = IchimokuStrategy(self.cfg.strategy)
         banner(f"BACKTEST: {strategy.name} | sizing={self.cfg.risk.sizing_method.value} "
                f"stop={self.cfg.risk.stop_method.value} trailing={self.cfg.risk.trailing_method.value}")
         result: BacktestResult | None = None
@@ -324,12 +392,45 @@ class TradingBotCLI:
         print(f"\n Tables saved to {out}:")
         for label, path in saved.items():
             print(f"   {label:<13} {path.name}")
+        return result, report
+
+    def momentum(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
+        result, report = self._run_backtest(MomentumStrategy(self.cfg.momentum), engine)
         if self.plots:
-            charts = self._visualizer().create_all(result, report)
+            viz = self._visualizer()
             print(" Charts:")
-            for path in charts:
+            for path in (viz.plot_performance_dashboard(result, report),
+                         viz.plot_simple(result, "momentum_chart.png")):
                 print(f"   {path}")
         return result, report
+
+    def pairs_backtest(self) -> BacktestResult:
+        cfg = self.cfg
+        base = self.data()
+        banner(f"PAIRS BACKTEST: {cfg.pairs.label} | capital={cfg.risk.initial_capital:,.0f}")
+        quote_data = DataLoader(replace(cfg, data=replace(cfg.data, symbol=cfg.pairs.quote_symbol))).load(refresh=True)
+        diag = CointegrationAnalyzer.diagnostics(base, quote_data, cfg.pairs.lookback)
+        print(f" Pair fitness: {diag['bars']:,} aligned bars | return corr {diag['return_correlation']:.2f} | "
+              f"beta {diag['hedge_beta_mean']:.3f} (+/-{diag['hedge_beta_std']:.3f}) | "
+              f"half-life {diag['half_life_bars']:.0f} bars")
+
+        result = PairsBacktester(cfg).run(base, quote_data)
+        report = self.analyzer.analyze(result)
+        print(report.format())
+
+        out = self.report_dir
+        saved = result.save(out)
+        saved.update(report.save(out, slugify(result.name)))
+        print(f"\n Tables saved to {out}:")
+        for label, path in saved.items():
+            print(f"   {label:<13} {path.name}")
+        if self.plots:
+            viz = self._visualizer()
+            print(" Charts:")
+            for path in (viz.plot_performance_dashboard(result, report),
+                         viz.plot_pairs(result, "pairs_chart.png")):
+                print(f"   {path}")
+        return result
 
     def compare(self) -> pd.DataFrame:
         df = self.data()
@@ -432,16 +533,18 @@ class TradingBotCLI:
     def menu(self) -> None:
         actions: dict[str, tuple[str, Callable[[], Any]]] = {
             "1": ("Fetch / update market data", self.fetch),
-            "2": ("Backtest (vectorised + event-driven, report & charts)", self.backtest),
+            "2": ("Backtest Ichimoku (vectorised + event-driven, report & charts)", self.backtest),
             "3": ("Compare Ichimoku presets (standard / crypto / dynamic)", self.compare),
             "4": ("Optimise parameters (in-sample vs out-of-sample)", self.optimize),
-            "5": ("Launch real-time trader", self.live),
-            "6": ("Run the full pipeline", self.pipeline),
-            "7": ("Settings", self.settings),
+            "5": ("Backtest momentum strategy", self.momentum),
+            "6": ("Backtest pairs trading (two symbols)", self.pairs_backtest),
+            "7": ("Launch real-time trader", self.live),
+            "8": ("Run the full pipeline", self.pipeline),
+            "9": ("Settings", self.settings),
         }
         while True:
             c = self.cfg
-            banner(f"ICHIMOKU CLOUD CRYPTO TRADING SYSTEM | {c.data.symbol} {c.data.timeframe} | "
+            banner(f"CRYPTO ALGO TRADING SYSTEM | {c.data.symbol} {c.data.timeframe} | "
                    f"{c.strategy.label} | {c.live.mode.value}")
             print(f" data: {c.data.source.value}, {c.data.history_days} days | sizing: {c.risk.sizing_method.value} "
                   f"| stop: {c.risk.stop_method.value} | trailing: {c.risk.trailing_method.value} | "
@@ -570,6 +673,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             app.compare()
         elif args.command == "optimize":
             app.optimize(args.metric)
+        elif args.command == "momentum":
+            app.momentum(args.engine)
+        elif args.command == "pairs":
+            app.pairs_backtest()
         elif args.command == "live":
             app.live(confirm_live=args.confirm_live)
         elif args.command == "pipeline":

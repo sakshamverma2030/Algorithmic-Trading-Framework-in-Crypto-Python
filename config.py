@@ -109,6 +109,13 @@ class DataSource(str, Enum):
     CSV = "csv"              # user-supplied OHLCV file
 
 
+class RegimeMethod(str, Enum):
+    """How the adaptive Ichimoku labels the volatility regime of each bar."""
+
+    QUANTILE = "quantile"  # rolling NATR percentile ranks (default, fully vectorised)
+    KMEANS = "kmeans"      # causal K-Means clustering of trailing NATR (scipy.cluster.vq)
+
+
 class FeedType(str, Enum):
     CCXT_PRO = "ccxtpro"  # WebSocket streams (ccxt.pro, bundled with ccxt >= 4)
     REST = "rest"         # REST polling fallback
@@ -204,6 +211,22 @@ class StrategyConfig:
     require_chikou: bool = True         # Chikou confirmation: Close_t vs Close_{t-displacement}
     require_kumo_twist: bool = False    # optional filter: future (leading) cloud has the trade's colour
 
+    # RSI overlay (Wilder). ``use_rsi_filter`` prevents entries into overbought rallies
+    # and exits longs as RSI crosses above ``rsi_overbought``. ``use_rsi_divergence``
+    # only allows entries that form a causal RSI/price divergence in the last bars.
+    use_rsi_filter: bool = False
+    rsi_period: int = 14
+    rsi_overbought: float = 70.0
+    rsi_oversold: float = 30.0
+    use_rsi_divergence: bool = False
+    divergence_lookback: int = 10
+
+    # Regime detection for the dynamic preset: quantile ranks (default) or a causal
+    # K-Means clustering of trailing normalised ATR (see indicators.AdaptiveIchimoku).
+    regime_method: RegimeMethod = RegimeMethod.QUANTILE
+    kmeans_clusters: int = 3
+    kmeans_fit_iters: int = 20  # K-Means iterations per bar (deterministic seed, strictly trailing)
+
     def __post_init__(self) -> None:
         unknown = [p for p in self.regime_presets if p not in ICHIMOKU_PRESETS]
         if unknown:
@@ -212,6 +235,12 @@ class StrategyConfig:
             raise ConfigError("Regime quantiles must satisfy 0 < low < high < 1")
         if self.cross_lookback < 1 or self.atr_period < 2 or self.regime_lookback < 20:
             raise ConfigError("cross_lookback >= 1, atr_period >= 2 and regime_lookback >= 20 required")
+        if self.rsi_period < 2 or self.divergence_lookback < 4:
+            raise ConfigError("rsi_period >= 2 and divergence_lookback >= 4 required")
+        if not 0 < self.rsi_oversold < self.rsi_overbought < 100:
+            raise ConfigError("RSI thresholds must satisfy 0 < oversold < overbought < 100")
+        if self.regime_method is RegimeMethod.KMEANS and self.kmeans_clusters != 3:
+            raise ConfigError("K-Means regime maps clusters to low/normal/high, so kmeans_clusters must be 3")
 
     @classmethod
     def from_preset(cls, name: str, **overrides: Any) -> StrategyConfig:
@@ -224,8 +253,89 @@ class StrategyConfig:
     @property
     def label(self) -> str:
         if self.dynamic:
-            return "Ichimoku dynamic (" + " | ".join(ICHIMOKU_PRESETS[p].label for p in self.regime_presets) + ")"
+            regime = self.regime_method.value if isinstance(self.regime_method, RegimeMethod) else self.regime_method
+            return ("Ichimoku dynamic " + regime + " (" +
+                    " | ".join(ICHIMOKU_PRESETS[p].label for p in self.regime_presets) + ")")
         return f"Ichimoku {self.params.label}"
+
+
+# --------------------------------------------------------------------------------------
+# Secondary strategies (research modules on top of the Ichimoku system)
+# --------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class MomentumConfig:
+    """Time-series momentum: follow the sign of the return over ``lookback`` bars.
+
+        momentum_t = Close_t / Close_{t - lookback} - 1
+        Long   when  momentum_t >=  entry_threshold  (and optionally Close_t > SMA)
+        Exit   when  momentum_t <   exit_threshold   (or close falls below the SMA)
+
+    The ``cloud_top/cloud_bottom`` used by the event-driven engine are Donchian
+    channels, so ATR stops, Kumo-style stops and the Kijun trailing stop still work.
+    """
+
+    lookback: int = 20            # momentum measurement window (bars)
+    entry_threshold: float = 0.02  # minimum lookback return to enter long (0.02 = 2 %)
+    exit_threshold: float = 0.0    # exit below this momentum (0 = momentum turns negative)
+    sma_period: int = 50           # trend filter line
+    require_above_sma: bool = False  # long entries also need Close > SMA
+    allow_short: bool = False      # symmetric short on momentum <= -entry_threshold
+    atr_period: int = 14
+
+    def __post_init__(self) -> None:
+        if self.lookback < 3 or self.sma_period < 2 or self.atr_period < 2:
+            raise ConfigError("momentum lookback >= 3, sma_period >= 2 and atr_period >= 2 required")
+        if self.entry_threshold < 0 or self.exit_threshold < -self.entry_threshold:
+            raise ConfigError("entry_threshold >= 0 and exit_threshold >= -entry_threshold required")
+
+    @property
+    def label(self) -> str:
+        side = "long-only" if not self.allow_short else "long/short"
+        return (f"{side} momentum {self.lookback}b | entry {self.entry_threshold:+.0%} "
+                f"exit {self.exit_threshold:+.0%}" + (" | SMA filter" if self.require_above_sma else ""))
+
+
+@dataclass(frozen=True)
+class PairsConfig:
+    """Statistical-arbitrage (pairs) trading of two cointegrated symbols.
+
+    The cointegration residual is estimated with a rolling ordinary least-squares hedge
+    (``log_a - beta * log_b``); its rolling z-score is the trading signal:
+
+        z < -entry_zscore   ->  long the spread  (sell ``beta`` of b / buy a)
+        z >  +entry_zscore  ->  short the spread (buy ``beta`` of b / sell a)
+        |z| < exit_zscore   ->  close the position (mean reversion completed)
+        z beyond the stop   ->  protective stop   (the spread broke down, not mean-reverted)
+
+    ``PairsBacktester`` replicates the event-driven accounting of the main engine on a
+    self-financing spread portfolio: strategy return_t = w_{t-1} * (d_log_a - beta_{t-1} * d_log_b).
+    """
+
+    base_symbol: str = "BTC/USDT"    # symbol whose OHLCV feeds the feature columns
+    quote_symbol: str = "ETH/USDT"   # the hedged symbol (regressed against the base)
+    lookback: int = 60               # rolling window for beta, spread mean and std
+    entry_zscore: float = 2.0        # open when the spread exceeds 2 sigma
+    exit_zscore: float = 0.5         # close once it reverts to 0.5 sigma
+    stop_zscore: float = 3.5         # abandon the pair if the spread keeps diverging
+    max_hold_bars: int = 120         # force-close a position that never reverted
+    min_correlation: float = 0.7     # skip opens while the pair's rolling return correlation is too low
+    use_log_prices: bool = True      # cointegrate log prices (standard for ratios >= 1)
+    atr_period: int = 14
+
+    def __post_init__(self) -> None:
+        if self.lookback < 20:
+            raise ConfigError("pairs lookback window must be at least 20 bars")
+        if not 0 < self.exit_zscore < self.entry_zscore < self.stop_zscore:
+            raise ConfigError("pairs z-score thresholds must satisfy 0 < exit < entry < stop")
+        if self.max_hold_bars < 2 or self.atr_period < 2:
+            raise ConfigError("pairs max_hold_bars >= 2 and atr_period >= 2 required")
+        if not 0 < self.min_correlation < 1:
+            raise ConfigError("pairs min_correlation must be in (0, 1)")
+
+    @property
+    def label(self) -> str:
+        scale = "log" if self.use_log_prices else "raw price"
+        return f"pairs {self.base_symbol} x {self.quote_symbol} [{scale}, {self.lookback}b, z{self.entry_zscore}]"
 
 
 # --------------------------------------------------------------------------------------
@@ -372,6 +482,8 @@ class AppConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     live: LiveConfig = field(default_factory=LiveConfig)
+    momentum: MomentumConfig = field(default_factory=MomentumConfig)
+    pairs: PairsConfig = field(default_factory=PairsConfig)
 
     @property
     def periods_per_year(self) -> float:

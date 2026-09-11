@@ -668,6 +668,82 @@ class ChartVisualizer:
                         f"{meta.get('strategy', result.name)} | {len(result.trades)} round trips")
             return self._finish(fig, filename)
 
+    # ------------------------------------------------------------------ secondary strategies
+    def plot_simple(self, result: BacktestResult, filename: str = "strategy_chart.png",
+                    last_n: int = 400) -> Path:
+        """Candles + trend line + trade markers + volume for non-Ichimoku strategies (momentum)."""
+        sig = result.signals
+        window = sig.iloc[-last_n:]
+        x = _to_num(window.index)
+        bar_days = float(np.median(np.diff(x))) if len(x) > 1 else 1 / 24
+
+        with plt.rc_context(self._rc):
+            fig, (ax, axv) = plt.subplots(2, 1, figsize=(16, 9), sharex=True,
+                                          gridspec_kw={"height_ratios": [4.2, 1.0], "hspace": 0.04,
+                                                       "top": 0.86, "bottom": 0.07, "left": 0.06, "right": 0.97})
+            self._candles(ax, x, window, width=bar_days * 0.65)
+            if "kijun" in window.columns and window["kijun"].notna().any():
+                ax.plot(x, window["kijun"], color=KIJUN_C, lw=1.4, label="SMA (trend line)")
+            self._trade_markers(ax, result.trades, window.index[0], window.index[-1], size=70)
+            ax.set_ylabel("Price")
+            _money(ax)
+            ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.01), ncol=5)
+
+            up = window["close"].to_numpy() >= window["open"].to_numpy()
+            axv.bar(x, window["volume"], width=bar_days * 0.65, color=np.where(up, AXIS, MUTED), linewidth=0)
+            axv.set_ylabel("Volume")
+            axv.grid(axis="x", visible=False)
+            _date_axis(axv)
+            meta = result.metadata
+            self._title(fig, f"{meta.get('symbol', '')} {meta.get('timeframe', '')} - {meta.get('strategy', result.name)}",
+                        f"last {len(window)} bars | ^ buy  v sell")
+            return self._finish(fig, filename)
+
+    def plot_pairs(self, result: BacktestResult, filename: str = "pairs_chart.png", last_n: int = 400) -> Path:
+        """Normalised legs, spread z-score (with entry/exit/stop levels) and position shade."""
+        sig = result.signals
+        window = sig.iloc[-last_n:]
+        x = _to_num(window.index)
+        pairs = result.metadata.get("pairs", {})
+
+        with plt.rc_context(self._rc):
+            fig, (ax, az) = plt.subplots(2, 1, figsize=(16, 9), sharex=True,
+                                         gridspec_kw={"height_ratios": [2.2, 1.0], "hspace": 0.05,
+                                                      "top": 0.86, "bottom": 0.07, "left": 0.06, "right": 0.97})
+            base_n = window["base"].to_numpy() / window["base"].iloc[0]
+            quote_n = window["quote"].to_numpy() / window["quote"].iloc[0]
+            ax.plot(x, base_n, color=BULL_C, lw=1.5, label=pairs.get("base", "base"))
+            ax.plot(x, quote_n, color=BENCHMARK_C, lw=1.5, label=pairs.get("quote", "quote"))
+            ax.axhline(1.0, color=AXIS, lw=0.9)
+            ax.set_ylabel("Normalised price")
+            ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.01), ncol=4)
+
+            z = window["z"].to_numpy()
+            az.fill_between(x, 0, 1, where=(window["position"].to_numpy() != 0),
+                            transform=az.get_xaxis_transform(), color=STRATEGY_C, alpha=0.10, linewidth=0,
+                            step="mid", label="Spread position")
+            az.plot(x, z, color=STRATEGY_C, lw=1.1, label="z-score")
+            for level, color, style in ((pairs.get("entry_zscore", 2.0), BULL_C, "--"),
+                                        (-pairs.get("entry_zscore", 2.0), BEAR_C, "--"),
+                                        (pairs.get("exit_zscore", 0.5), MUTED, ":"),
+                                        (-pairs.get("exit_zscore", 0.5), MUTED, ":")):
+                az.axhline(level, color=color, lw=0.9, ls=style)
+            az.axhline(0, color=AXIS, lw=0.9)
+            az.set_ylabel("z-score")
+            if np.isfinite(z).any():
+                bound = float(np.nanpercentile(np.abs(z), 99)) + 0.5
+                az.set_ylim(-bound, bound)
+            az.legend(loc="lower left", ncol=5)
+            _date_axis(az)
+
+            self._title(fig, f"Pairs trading: {pairs.get('base', '')} x {pairs.get('quote', '')}",
+                        f"corr {pairs.get('annualised_correlation', float('nan')):.2f} | "
+                        f"beta {pairs.get('hedge_beta_mean', float('nan')):.2f} | "
+                        f"half-life {pairs.get('spread_half_life_bars', float('nan')):.0f} bars | "
+                        f"z entry {pairs.get('entry_zscore', 2.0):.1f} / exit {pairs.get('exit_zscore', 0.5):.1f} / "
+                        f"stop {pairs.get('stop_zscore', 3.5):.1f}")
+            return self._finish(fig, filename)
+
     @staticmethod
     def _candles(ax: plt.Axes, x: np.ndarray, frame: pd.DataFrame, width: float) -> None:
         o, h, l, c = (frame[k].to_numpy() for k in ("open", "high", "low", "close"))
