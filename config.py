@@ -347,6 +347,128 @@ class PairsConfig:
 
 
 # --------------------------------------------------------------------------------------
+# Intermediate strategies ("Intermediate")
+# --------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CalendarConfig:
+    """Calendar-anomaly seasonality (hour-of-day / day-of-week / month effects).
+
+    Enters long when the current bar's time-of-week shows an historically positive
+    average return; exits (or stays flat) otherwise. The calendar feature is built
+    from the candle's UTC open time, so it is causal by construction.
+    """
+
+    dayofweek: bool = True       # Mon..Sun seasonal profile
+    hour: bool = True            # UTC hour-of-day profile
+    min_obs: int = 8             # minimum samples per calendar bucket before it is "valid"
+    allow_short: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.dayofweek and not self.hour:
+            raise ConfigError("calendar strategy needs at least one seasonal feature (dayofweek and/or hour)")
+        if self.min_obs < 2:
+            raise ConfigError("calendar min_obs must be >= 2")
+
+    @property
+    def label(self) -> str:
+        feats = []
+        if self.dayofweek:
+            feats.append("dow")
+        if self.hour:
+            feats.append("hour")
+        return "calendar anomalies [" + "+".join(feats) + "]"
+
+
+@dataclass(frozen=True)
+class DivergenceConfig:
+    """Aroon / RSI divergence strategy.
+
+    Combines Chande's Aroon trend-strength oscillator with Wilder's RSI. A bullish
+    divergence forms when price makes a lower low while Aroon(RSI) prints a higher
+    low (momentum is not confirming the price move); a bearish divergence mirrors
+    this on rallies. The spread between Aroon-Up and Aroon-Down is the trend gate.
+    """
+
+    aroon_period: int = 25          # classic Aroon window
+    rsi_period: int = 14
+    divergence_lookback: int = 10   # rolling window compared for price vs momentum extremes
+    require_divergence: bool = True # only trade on an explicit divergence setup
+    min_aroon_spread: float = 30.0  # AroonUp - AroonDown gate before a divergence counts
+    allow_short: bool = False
+
+    def __post_init__(self) -> None:
+        if self.aroon_period < 2 or self.rsi_period < 2 or self.divergence_lookback < 4:
+            raise ConfigError("divergence periods must satisfy aroon >= 2, rsi >= 2, lookback >= 4")
+        if not 0 < self.min_aroon_spread <= 100:
+            raise ConfigError("min_aroon_spread must be in (0, 100]")
+
+    @property
+    def label(self) -> str:
+        return f"aroon/rsi divergence [{self.aroon_period}/{self.rsi_period}, L{self.divergence_lookback}]"
+
+
+# --------------------------------------------------------------------------------------
+# Advanced / ML strategies ("Advanced")
+# --------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class HurstConfig:
+    """Hurst-exponent regime filter combined with RSI.
+
+    H_estimated > 0.5 -> trending regime (trade momentum with RSI confirmation)
+    H_estimated < 0.5 -> mean-reverting regime (trade mean reversion with RSI extremes)
+    """
+
+    max_lag: int = 100               # longest lag in the R/S regression
+    window: int = 250                # rolling window over which H is re-estimated
+    trend_threshold: float = 0.5     # H above this => trend regime
+    reversion_threshold: float = 0.45  # H below this => mean-reversion regime
+    min_hurst_obs: int = 60          # bars before an H estimate is trustworthy
+    rsi_period: int = 14
+    rsi_overbought: float = 70.0
+    rsi_oversold: float = 30.0
+
+    def __post_init__(self) -> None:
+        if self.max_lag < 20 or self.window < self.max_lag * 2:
+            raise ConfigError("hurst max_lag >= 20 and window >= 2*max_lag required")
+        if not 0 < self.reversion_threshold <= self.trend_threshold < 1:
+            raise ConfigError("hurst thresholds must satisfy 0 < reversion <= trend < 1")
+        if self.min_hurst_obs < 20 or self.rsi_period < 2:
+            raise ConfigError("hurst min_hurst_obs >= 20 and rsi_period >= 2 required")
+
+    @property
+    def label(self) -> str:
+        return f"Hurst {self.max_lag}/{self.window} + RSI{self.rsi_period}"
+
+
+@dataclass(frozen=True)
+class PortfolioConfig:
+    """Multi-asset universe used by the K-Means clusterer and the long-only
+    momentum / quant framework (cross-sectional ranking, top-N rebalancing)."""
+
+    universe: tuple[str, ...] = (
+        "BTC/USDT", "ETH/USDT", "SOL/USDT", "ADA/USDT", "XRP/USDT",
+    )
+    lookback: int = 20               # cross-sectional momentum ranking window (bars)
+    top_n: int = 2                   # number of top-ranked assets held at any rebalance
+    rebalance_every: int = 10        # bars between rebalancing
+    kmeans_clusters: int = 3         # K in the volatility/momentum/volume feature space
+    kmeans_random_state: int = 42
+    cluster_target: int | None = None  # None = trade the best-performing cluster
+
+    def __post_init__(self) -> None:
+        if len(self.universe) < 2:
+            raise ConfigError("portfolio universe needs at least 2 symbols")
+        if not 1 <= self.top_n <= len(self.universe):
+            raise ConfigError("top_n must be within the universe size")
+        if self.lookback < 2 or self.rebalance_every < 1 or self.kmeans_clusters < 2:
+            raise ConfigError("portfolio lookback >= 2, rebalance_every >= 1, kmeans_clusters >= 2")
+
+    @property
+    def label(self) -> str:
+        return f"portfolio top{self.top_n}/{len(self.universe)} rebalance{self.rebalance_every}"
+
+
+# --------------------------------------------------------------------------------------
 # Market microstructure, risk, backtest & live settings
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -495,6 +617,10 @@ class AppConfig:
     live: LiveConfig = field(default_factory=LiveConfig)
     momentum: MomentumConfig = field(default_factory=MomentumConfig)
     pairs: PairsConfig = field(default_factory=PairsConfig)
+    calendar: CalendarConfig = field(default_factory=CalendarConfig)
+    divergence: DivergenceConfig = field(default_factory=DivergenceConfig)
+    hurst: HurstConfig = field(default_factory=HurstConfig)
+    portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
 
     @property
     def periods_per_year(self) -> float:

@@ -39,6 +39,22 @@ from scipy.cluster.vq import kmeans2
 
 from config import ICHIMOKU_PRESETS, IchimokuParams, RegimeMethod, StrategyConfig
 
+try:  # scikit-learn KMeans is used when available for the ML clustering strategy.
+    from sklearn.cluster import KMeans  # type: ignore[import-not-found]
+
+    HAS_SKLEARN = True
+except Exception:  # noqa: BLE001
+    KMeans = None
+    HAS_SKLEARN = False
+
+try:  # statsmodels ADF / cointegration tables are used when available.
+    from statsmodels.tsa.stattools import adfuller  # type: ignore[import-not-found]
+
+    HAS_STATSMODELS = True
+except Exception:  # noqa: BLE001
+    adfuller = None
+    HAS_STATSMODELS = False
+
 logger = logging.getLogger(__name__)
 
 try:  # TA-Lib is optional: C-speed rolling extremes and ATR; identical results otherwise.
@@ -167,6 +183,119 @@ def rsi_divergence(rsi: pd.Series, close: pd.Series, lookback: int = 10) -> pd.D
         {"rsi_bull_div": bull.fillna(False), "rsi_bear_div": bear.fillna(False)},
         index=rsi.index,
     )
+
+
+def aroon(high: pd.Series, low: pd.Series, period: int = 25) -> pd.DataFrame:
+    """Aroon Up / Aroon Down (Tushar Chande, 1995) - trend-strength oscillator.
+
+        Aroon Up   = 100 * (period - bars since the period-length high) / period
+        Aroon Down = 100 * (period - bars since the period-length low)  / period
+
+    Values near 100 signal a persistent new extreme (strong trend); values near 0
+    signal prolonged consolidation. ``period`` counts the look-back window plus the
+    current bar, so ``period=25`` matches the classic 25-bar Aroon.
+    """
+    window = period + 1
+    high_idx = high.rolling(window=window).apply(lambda w: int(np.argmax(w)), raw=True)
+    low_idx = low.rolling(window=window).apply(lambda w: int(np.argmin(w)), raw=True)
+    # argmax position ``p`` (0 = oldest, period = newest); bars since the extreme is
+    # ``period - p``, so Aroon = 100 * (period - (period - p)) / period = 100 * p / period.
+    aroon_up = 100.0 * high_idx.dropna() / period
+    aroon_down = 100.0 * low_idx.dropna() / period
+    return pd.DataFrame(
+        {"aroon_up": aroon_up.reindex(high.index),
+         "aroon_down": aroon_down.reindex(low.index)},
+        index=high.index,
+    )
+
+
+def hurst_exponent(close: pd.Series, max_lag: int = 100) -> float:
+    """Rescaled-range (R/S) Hurst exponent H of a price series.
+
+    For a time series with n points the statistic R/S(n) = (max - min) of the
+    cumulative-deviation series (rescaled by its standard deviation) grows as a power
+    law R/S ~ (n/2)^H. A least-squares regression of log(R/S) on log(lag) yields H:
+
+        H > 0.5   persistent / trending    (momentum strategies work)
+        H = 0.5   random walk
+        H < 0.5   mean-reverting           (pairs / reversal strategies work)
+
+    Returns NaN when fewer than 3 usable lags exist.
+    """
+    x = close.to_numpy(dtype="float64")
+    x = x[~np.isnan(x)]
+    if len(x) < 8:
+        return float("nan")
+    lags = range(2, min(max_lag + 1, len(x) // 2))
+    tau: list[float] = []
+    for lag in lags:
+        segments = len(x) // lag
+        if segments < 1:
+            continue
+        s = [x[i * lag:(i + 1) * lag] for i in range(segments)]
+        rs = []
+        for seg in s:
+            mean = seg.mean()
+            if mean == 0:
+                continue
+            dev = seg - mean
+            rs.append((np.max(np.cumsum(dev)) - np.min(np.cumsum(dev))) / np.std(seg))
+        if rs:
+            tau.append(np.mean(rs))
+    if len(tau) < 3:
+        return float("nan")
+    pts = np.log(np.array(list(lags), dtype=float)[:len(tau)]), np.log(np.array(tau))
+    slope, _ = np.polyfit(pts[0], pts[1], 1)
+    return float(slope)
+
+
+def bollinger_bands(close: pd.Series, period: int = 20, num_std: float = 2.0
+                    ) -> pd.DataFrame:
+    """Bollinger Bands: 2 std-dev channel around a moving average.
+
+        middle = SMA(period)
+        upper  = middle + num_std * rolling_std(close, period)
+        lower  = middle - num_std * rolling_std(close, period)
+
+    Used by the pairs-trading spread engine (z-score equivalent) and as a
+    mean-reversion filter in the momentum-alpha framework.
+    """
+    middle = close.rolling(period, min_periods=period).mean()
+    std = close.rolling(period, min_periods=period).std(ddof=0)
+    return pd.DataFrame(
+        {"bb_middle": middle, "bb_upper": middle + num_std * std,
+         "bb_lower": middle - num_std * std},
+        index=close.index,
+    )
+
+
+def adf_test(series: pd.Series, max_lag: int | None = None) -> dict[str, float | int]:
+    """Augmented Dickey-Fuller stationarity test (statsmodels backed).
+
+    Tests the null hypothesis that ``series`` has a unit root (is non-stationary).
+    A very negative ADF statistic with p-value < 0.05 rejects the null, meaning the
+    series is stationary and therefore suitable for mean-reversion trading.
+
+    Returns a dict with keys: adf_stat, p_value, used_lag, n_obs, critical_1/5/10,
+    is_stationary. Without statsmodels the function returns NaN statistics.
+    """
+    out: dict[str, float | int] = {}
+    x = series.dropna()
+    if len(x) < 8 or not HAS_STATSMODELS:
+        out = {"adf_stat": float("nan"), "p_value": float("nan"), "used_lag": -1,
+               "n_obs": len(x), "critical_1": float("nan"), "critical_5": float("nan"),
+               "critical_10": float("nan"), "is_stationary": False}
+        return out
+    try:
+        stat = adfuller(x, maxlag=max_lag, autolag="AIC", result_object=False)
+    except TypeError:  # older statsmodels without the return-type switch
+        stat = adfuller(x, maxlag=max_lag, autolag="AIC")
+    out = {"adf_stat": float(stat[0]), "p_value": float(stat[1]),
+           "used_lag": int(stat[2]), "n_obs": int(stat[3]),
+           "critical_1": float(stat[4]["1%"]), "critical_5": float(stat[4]["5%"]),
+           "critical_10": float(stat[4]["10%"]),
+           "is_stationary": bool(stat[1] < 0.05)}
+    return out
 
 
 # --------------------------------------------------------------------------------------

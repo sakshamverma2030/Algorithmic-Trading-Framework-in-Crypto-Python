@@ -1,17 +1,19 @@
-# Ichimoku Cloud Crypto Trading System
+# Crypto Algo Trading & Backtesting System
 
-An end-to-end quantitative trading system for **crypto and Forex** markets built around the
-**Ichimoku Kinko Hyo** strategy. It covers data ingestion, vectorised and event-driven
-backtesting with realistic execution costs, risk management, performance analytics and
-charts, and an asynchronous real-time engine that trades automatically in **paper**, **demo
-(exchange testnet)** or **real** mode.
+An end-to-end quantitative trading system for **cryptocurrency markets** built around the
+**Ichimoku Kinko Hyo** strategy, extended with the full "Crypto Trading
+Strategies: Intermediate and Advanced"  (calendar anomalies, Aroon/RSI
+divergence, K-Means asset clustering, cointegrated pairs trading, Hurst-exponent regime
+filtering, long-only momentum / alpha portfolios). It covers data ingestion, vectorised
+and event-driven backtesting with realistic execution costs, risk management,
+performance analytics and charts, and an asynchronous real-time engine that trades
+automatically in **paper**, **demo (exchange testnet)** or **real** mode.
 
-Crypto data comes live from Binance (CCXT); Forex spot pairs (EUR/USD, GBP/USD, USD/JPY, ...)
-are downloaded free from Yahoo Finance and backtested offline. The real-time engine runs on
-crypto only.
+Crypto data comes live from Binance (CCXT); backtests run on exchange, synthetic or CSV
+data offline.
 
 ```
-Data fetch (CCXT / Yahoo Finance / SQLite) -> Signals (Ichimoku + overlays) -> Backtests (vectorised + event-driven)
+Data fetch (CCXT / SQLite) -> Signals (Ichimoku + overlays + ML strategies) -> Backtests (vectorised + event-driven)
         -> Analytics & charts -> Real-time engine (paper / demo / real)
 ```
 
@@ -25,14 +27,18 @@ Data fetch (CCXT / Yahoo Finance / SQLite) -> Signals (Ichimoku + overlays) -> B
 
 | File | Responsibility |
 |---|---|
-| `config.py` | Frozen dataclass configuration (exchange, data, strategy, costs, risk, backtest, live), Ichimoku presets, env/`.env` secrets, JSON-lines structured logging |
-| `data_loader.py` | CCXT paginated OHLCV download with retry/back-off, validation and gap report, SQLite cache (idempotent upsert, incremental refresh), Yahoo Finance Forex download (no API key), CSV/Parquet, synthetic regime-switching GBM generator |
-| `indicators.py` | Vectorised Ichimoku (all five lines + Kumo + projection), Wilder ATR (TA-Lib if installed), volatility-regime adaptive Ichimoku |
-| `strategy.py` | Signal rules (long / short / exit), vectorised position state machine, latest-bar snapshot for live trading |
-| `risk.py` | Cost model (fees, spread, slippage, square-root impact), fixed-fractional & Kelly sizing, ATR/Kumo stops, trailing stops, intrabar fill rules, circuit breaker. Shared by backtester and live engine |
+| `config.py` | Frozen dataclass configuration (exchange, data, strategy, costs, risk, backtest, live), Ichimoku presets, course-aligned strategy params, env/`.env` secrets, JSON-lines structured logging |
+| `data_loader.py` | CCXT paginated OHLCV download with retry/back-off, validation and gap report, SQLite cache (idempotent upsert, incremental refresh), CSV/Parquet, synthetic regime-switching GBM generator |
+| `indicators.py` | Vectorised Ichimoku (all five lines + Kumo + projection), Wilder ATR (TA-Lib if installed), RSI + causal RSI divergence, Aroon, Bollinger, rescaled-range Hurst exponent, ADF test (statsmodels), volatility-regime adaptive Ichimoku |
+| `strategy.py` | Ichimoku signal rules (long / short / exit), vectorised position state machine, latest-bar snapshot for live trading |
+| `intermediate_strategies.py` | "Intermediate": Ichimoku (re-export), **Calendar Anomalies** (hour / day-of-week seasonality), **Aroon / RSI Divergence** |
+| `advanced_ml_strategies.py` | "Advanced": **K-Means asset clustering** (scikit-learn or scipy fallback), **Hurst-exponent** trend regime + RSI filter, **long-only momentum / alpha** cross-sectional portfolio, pairs re-export |
+| `momentum.py` / `pairs.py` | Time-series momentum strategy; cointegrated pairs trading (rolling OLS hedge, spread z-score) |
+| `risk.py` | Cost model (0.1% fees, spread, slippage, square-root impact), fixed-fractional & Kelly sizing, ATR/Kumo stops, trailing stops, intrabar fill rules, circuit breaker. Shared by backtester and live engine |
 | `backtester.py` | `VectorizedBacktester`, `EventDrivenBacktester`, preset comparison, in-sample/out-of-sample `ParameterOptimizer` |
 | `analytics.py` | Sharpe, Sortino, Calmar, drawdown depth/duration, PSR, VaR/CVaR, alpha/beta, trade statistics, and all Matplotlib charts |
 | `live_trader.py` | asyncio engine: ccxt.pro WebSocket / REST / replay feeds, paper (order-book walking) and live (CCXT) execution, SQLite trade journal |
+| `live_paper_trader.py` | Spec-facing facade re-exporting the real-time engine (WebSockets + paper simulator + CCXT live templates) |
 | `main.py` | Interactive menu and CLI sub-commands for the whole pipeline |
 | `tests/test_core.py` | 22 tests, including look-ahead-bias checks and a backtest-vs-live parity test |
 
@@ -86,8 +92,11 @@ python main.py compare                                 # standard vs crypto vs c
 python main.py optimize --metric sharpe                # IS/OOS grid search + heatmap
 python main.py live                                    # paper trading on live market data
 python main.py live --source synthetic --replay-bars 800   # offline paper-trading replay
-python main.py backtest --source forex --symbol EUR/USD --timeframe 1h --days 180   # Forex backtest
-python main.py momentum --source forex --symbol EUR/USD --timeframe 1h              # momentum on EUR/USD
+python main.py momentum --source synthetic                      # momentum backtest
+python main.py calendar --source synthetic                      # calendar-anomaly backtest
+python main.py divergence --source synthetic                    # Aroon / RSI divergence backtest
+python main.py hurst --source synthetic                         # Hurst-exponent regime filter + RSI
+python main.py portfolio --source synthetic                     # K-Means clustering + momentum-alpha portfolio
 ```
 
 Useful flags: `--allow-short` (derivatives / margin only), `--cross-lookback N`, `--no-chikou`,
@@ -324,9 +333,6 @@ config parsing, and **live-replay vs backtest parity**.
   trading (order-book walking) and Binance Spot Testnet orders were exercised end-to-end, including
   fee-adjusted fills and the SQLite trade journal. Real mainnet orders have not been run; only
   testnet funds should be used until the strategy itself is proven.
-* **Forex is backtest-only.** `--source forex` downloads EUR/USD, GBP/USD, USD/JPY, etc. from Yahoo
-  Finance (free, no API key). Forex OHLCV carries no volume, so volume-weighted metrics show zeros,
-  and the real-time engine trades crypto only — Forex positions are not executed with real money.
 * **Backtest results on real data are currently negative.** As of the last verified runs, the
   long-only preset variants lost money on BTC/USDT 1h and ETH/USDT 1h (profit factors 0.4-0.7) and
   barely traded on BTC 1d, in a period where buy-and-hold rose. The in-sample parameter optimiser

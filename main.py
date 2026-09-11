@@ -85,6 +85,8 @@ from config import (  # noqa: E402
     setup_logging,
 )
 from data_loader import DataLoader, DataLoaderError  # noqa: E402
+from intermediate_strategies import AroonRsiDivergenceStrategy, CalendarAnomalyStrategy  # noqa: E402
+from advanced_ml_strategies import HurstTrendStrategy, KMeansAssetClusterer, MomentumAlphaPortfolio  # noqa: E402
 from live_trader import LiveTradingError, build_strategy, run_async, run_live_session, warmup_bars_needed  # noqa: E402
 from momentum import MomentumStrategy  # noqa: E402
 from pairs import CointegrationAnalyzer, PairsBacktester  # noqa: E402
@@ -92,7 +94,8 @@ from strategy import IchimokuStrategy  # noqa: E402
 
 logger = logging.getLogger("main")
 
-COMMANDS = ("menu", "fetch", "backtest", "compare", "optimize", "momentum", "pairs", "live", "pipeline")
+COMMANDS = ("menu", "fetch", "backtest", "compare", "optimize", "momentum", "pairs",
+            "calendar", "divergence", "hurst", "portfolio", "live", "pipeline")
 
 
 # ======================================================================================
@@ -174,6 +177,31 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--max-hold", type=int, help="bars after which an open spread is force-closed")
     pr.add_argument("--min-corr", type=float, help="minimum rolling correlation to open")
     pr.add_argument("--raw-prices", action="store_true", help="cointegrate raw prices instead of log prices")
+
+    cal = sub.add_parser("calendar", parents=[common], help="calendar-anomaly backtest (time-of-day / weekday seasonality)")
+    cal.add_argument("--engine", choices=["event", "vectorised", "both"], default="both")
+    cal.add_argument("--cal-features", choices=["hour", "dayofweek", "both"], default=None,
+                     help="seasonal features used by the calendar strategy (default both)")
+
+    div = sub.add_parser("divergence", parents=[common], help="Aroon / RSI divergence backtest")
+    div.add_argument("--engine", choices=["event", "vectorised", "both"], default="both")
+    div.add_argument("--aroon-period", type=int, help="Aroon window (default 25)")
+    div.add_argument("--div-period", type=int, help="RSI period (default 14)")
+    div.add_argument("--div-lookback", type=int, help="divergence detection window (default 10)")
+    div.add_argument("--no-div-required", action="store_true",
+                     help="trade Aroon trend direction instead of requiring a divergence")
+
+    hur = sub.add_parser("hurst", parents=[common], help="Hurst-exponent regime filter + RSI backtest")
+    hur.add_argument("--engine", choices=["event", "vectorised", "both"], default="both")
+    hur.add_argument("--hurst-maxlag", type=int, help="longest lag in the R/S regression (default 100)")
+    hur.add_argument("--hurst-window", type=int, help="rolling window for H estimation (default 250)")
+
+    pfo = sub.add_parser("portfolio", parents=[common], help="multi-asset K-Means clusters + long-only momentum alpha")
+    pfo.add_argument("--universe", nargs="+", default=None, help="symbols, e.g. BTC/USDT ETH/USDT SOL/USDT")
+    pfo.add_argument("--top-n", type=int, help="assets held at each rebalance (default 2)")
+    pfo.add_argument("--rebalance", type=int, help="bars between rebalances (default 10)")
+    pfo.add_argument("--clusters", type=int, help="K in the K-Means feature space (default 3)")
+    pfo.add_argument("--share-top", action="store_true", help="also print the top-N ranking table")
     live = sub.add_parser("live", parents=[common], help="launch the real-time paper / live trader")
     _add_live_args(live)
     pipe = sub.add_parser("pipeline", parents=[common], help="fetch -> backtest -> charts -> paper trader")
@@ -307,7 +335,27 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     )
 
     return AppConfig(exchange=exchange, data=data, strategy=strategy, costs=costs, risk=risk,
-                     backtest=cfg.backtest, live=live, momentum=momentum, pairs=pairs)
+                     backtest=cfg.backtest, live=live, momentum=momentum, pairs=pairs,
+                     calendar=cfg.calendar,
+                     divergence=replace(
+                         cfg.divergence,
+                         aroon_period=opt("aroon_period") or cfg.divergence.aroon_period,
+                         rsi_period=opt("div_period") or cfg.divergence.rsi_period,
+                         divergence_lookback=opt("div_lookback") or cfg.divergence.divergence_lookback,
+                         require_divergence=cfg.divergence.require_divergence and not bool(opt("no_div_required")),
+                     ),
+                     hurst=replace(
+                         cfg.hurst,
+                         max_lag=opt("hurst_maxlag") or cfg.hurst.max_lag,
+                         window=opt("hurst_window") or cfg.hurst.window,
+                     ),
+                     portfolio=replace(
+                         cfg.portfolio,
+                         universe=tuple(s.upper() for s in opt("universe")) if opt("universe") else cfg.portfolio.universe,
+                         top_n=opt("top_n") or cfg.portfolio.top_n,
+                         rebalance_every=opt("rebalance") or cfg.portfolio.rebalance_every,
+                         kmeans_clusters=opt("clusters") or cfg.portfolio.kmeans_clusters,
+                     ))
 
 
 # ======================================================================================
@@ -408,6 +456,80 @@ class TradingBotCLI:
                          viz.plot_simple(result, "momentum_chart.png")):
                 print(f"   {path}")
         return result, report
+
+    def calendar(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
+        story, report = self._run_backtest(CalendarAnomalyStrategy(self.cfg.calendar), engine)
+        if self.plots:
+            viz = self._visualizer()
+            print(" Charts:")
+            for path in (viz.plot_performance_dashboard(story, report),
+                         viz.plot_simple(story, "calendar_chart.png")):
+                print(f"   {path}")
+        return story, report
+
+    def divergence(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
+        story, report = self._run_backtest(AroonRsiDivergenceStrategy(self.cfg.divergence), engine)
+        if self.plots:
+            viz = self._visualizer()
+            print(" Charts:")
+            for path in (viz.plot_performance_dashboard(story, report),
+                         viz.plot_simple(story, "divergence_chart.png")):
+                print(f"   {path}")
+        return story, report
+
+    def hurst(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
+        story, report = self._run_backtest(HurstTrendStrategy(self.cfg.hurst), engine)
+        if self.plots:
+            viz = self._visualizer()
+            print(" Charts:")
+            for path in (viz.plot_performance_dashboard(story, report),
+                         viz.plot_simple(story, "hurst_chart.png")):
+                print(f"   {path}")
+        return story, report
+
+    def portfolio(self, share_top: bool = False) -> None:
+        cfg = self.cfg
+        banner(f"PORTFOLIO: {cfg.portfolio.label} | capital={cfg.risk.initial_capital:,.0f}")
+        frames: dict[str, pd.DataFrame] = {}
+        for i, sym in enumerate(cfg.portfolio.universe):
+            loader = DataLoader(replace(cfg, data=replace(cfg.data, symbol=sym, synthetic_seed=cfg.data.synthetic_seed + i)))
+            try:
+                frames[sym] = loader.load(refresh=True)
+                print(f"   {sym:12s} {len(frames[sym]):6d} bars  last close {frames[sym]['close'].iloc[-1]:,.2f}")
+            except DataLoaderError as exc:
+                print(f"   {sym:12s} skipped ({exc})")
+
+        clusterer = KMeansAssetClusterer(cfg.portfolio)
+        feat = clusterer.features(frames)
+        if len(feat) >= 2:
+            clusterer.fit(feat)
+            print("\n K-Means asset clusters (volatility / momentum / liquidity):")
+            with pd.option_context("display.width", 200, "display.max_columns", 10):
+                print(clusterer.cluster_stats(feat).round(4).to_string(index=False))
+
+        model = MomentumAlphaPortfolio(cfg.portfolio)
+        curve, trades = model.run(frames, initial_capital=cfg.risk.initial_capital,
+                                  one_way_cost=self.cfg.costs.taker_fee)
+        if not len(curve):
+            print(" Portfolio is empty - check the universe / data source.")
+            return
+        final = curve["equity"].iloc[-1]
+        bench_name = cfg.portfolio.universe[0]
+        bench_final = curve["benchmark"].iloc[-1]
+        print(f"\n Final equity: {final:,.2f}  (buy-and-hold {bench_name}: {bench_final:,.2f})")
+        print(f" Rebalances / trades: {len(trades):d}")
+        if share_top and self.cfg.portfolio.universe[0] in frames:
+            try:
+                print("\n Latest momentum ranking:")
+                print(model.alpha_scores(model.align(frames)).iloc[-1].sort_values(ascending=False).to_string())
+            except ValueError:
+                pass
+        out = self.report_dir
+        out.mkdir(parents=True, exist_ok=True)
+        curve["equity"].to_csv(out / "portfolio_equity.csv")
+        if len(trades):
+            trades.to_csv(out / "portfolio_trades.csv", index=False)
+        print(f"\n Saved to {out}: portfolio_equity.csv, portfolio_trades.csv")
 
     def pairs_backtest(self) -> BacktestResult:
         cfg = self.cfg
@@ -543,9 +665,13 @@ class TradingBotCLI:
             "4": ("Optimise parameters (in-sample vs out-of-sample)", self.optimize),
             "5": ("Backtest momentum strategy", self.momentum),
             "6": ("Backtest pairs trading (two symbols)", self.pairs_backtest),
-            "7": ("Launch real-time trader", self.live),
-            "8": ("Run the full pipeline", self.pipeline),
-            "9": ("Settings", self.settings),
+            "7": ("Backtest calendar anomalies (hour / weekday seasonality)", self.calendar),
+            "8": ("Backtest Aroon / RSI divergence", self.divergence),
+            "9": ("Backtest Hurst-exponent regime filter + RSI", self.hurst),
+            "10": ("Cluster universe + long-only momentum alpha portfolio", self.portfolio),
+            "11": ("Launch real-time trader", self.live),
+            "12": ("Run the full pipeline", self.pipeline),
+            "13": ("Settings", self.settings),
         }
         while True:
             c = self.cfg
@@ -599,6 +725,7 @@ class TradingBotCLI:
         feed = _prompt("Live feed", c.live.feed.value, str, [f.value for f in FeedType])
         live_strategy = _prompt("Live strategy", c.live.live_strategy.value, str,
                                 [s.value for s in StrategyKind])
+        cal_feat = _prompt("Calendar features", "both", str, ["both", "hour", "dayofweek"])
 
         strategy = replace(c.strategy, allow_short=allow_short)
         if preset == "dynamic":
@@ -614,6 +741,8 @@ class TradingBotCLI:
                              risk_per_trade=risk_pt, stop_method=StopMethod(stop),
                              trailing_method=TrailingMethod(trailing)),
                 live=replace(c.live, feed=FeedType(feed), live_strategy=StrategyKind(live_strategy)),
+                calendar=replace(c.calendar, dayofweek=cal_feat in ("both", "dayofweek"),
+                                 hour=cal_feat in ("both", "hour")),
             )
             print(" Settings updated.")
         except (ConfigError, ValueError) as exc:
@@ -684,6 +813,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             app.momentum(args.engine)
         elif args.command == "pairs":
             app.pairs_backtest()
+        elif args.command == "calendar":
+            app.calendar(args.engine)
+        elif args.command == "divergence":
+            app.divergence(args.engine)
+        elif args.command == "hurst":
+            app.hurst(args.engine)
+        elif args.command == "portfolio":
+            app.portfolio(share_top=args.share_top)
         elif args.command == "live":
             app.live(confirm_live=args.confirm_live)
         elif args.command == "pipeline":
