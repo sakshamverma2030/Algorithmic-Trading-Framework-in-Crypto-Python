@@ -313,9 +313,16 @@ config parsing, and **live-replay vs backtest parity**.
 
 ## 10. Status, limitations and next steps
 
-* **Exchange connectivity has not yet been exercised against Binance.** The offline pipeline,
-  paper engine and all tests have run, but real data download, WebSocket streams and testnet/real
-  orders run for the first time on your machine. Go through paper, then demo, before real money.
+* **Exchange connectivity has been validated against Binance.** Real 365/730-day OHLCV history
+  downloads (REST), the live WebSocket feed, warm-up, and the real-time engine all run. Paper
+  trading (order-book walking) and Binance Spot Testnet orders were exercised end-to-end, including
+  fee-adjusted fills and the SQLite trade journal. Real mainnet orders have not been run; only
+  testnet funds should be used until the strategy itself is proven.
+* **Backtest results on real data are currently negative.** As of the last verified runs, the
+  long-only preset variants lost money on BTC/USDT 1h and ETH/USDT 1h (profit factors 0.4-0.7) and
+  barely traded on BTC 1d, in a period where buy-and-hold rose. The in-sample parameter optimiser
+  winner overfits (IS Sharpe ~0.49 collapses to OOS ~-2.7). Treat the system as validated plumbing
+  with an unvalidated strategy; forward-test in paper/demo before any real funds.
 * Synthetic data exists to test the software. Judge the strategy only on real exchange data,
   and look at the out-of-sample columns rather than the best in-sample cell.
 * A correctly working bot is not a profitable one; profitability comes only from real-data
