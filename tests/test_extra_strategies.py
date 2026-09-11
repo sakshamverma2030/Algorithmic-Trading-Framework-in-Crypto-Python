@@ -237,3 +237,20 @@ def test_live_strategy_factory_selects_momentum():
     strategy = build_strategy(mom)
     assert strategy.name == mom.momentum.label
     assert strategy.allow_short == mom.momentum.allow_short
+
+
+# ----------------------------------------------------------------------------- forex data source
+def test_forex_symbol_normalisation():
+    from data_loader import _yahoofinance_symbol
+
+    assert _yahoofinance_symbol("EUR/USD") == "EURUSD=X"
+    assert _yahoofinance_symbol("GBP/USD") == "GBPUSD=X"
+    assert _yahoofinance_symbol("USD/JPY") == "USDJPY=X"
+    assert _yahoofinance_symbol("eurusd") == "EURUSD=X"
+
+
+def test_forex_rejects_unsupported_timeframe():
+    from data_loader import DataLoaderError, fetch_forex_ohlcv
+
+    with pytest.raises(DataLoaderError):
+        fetch_forex_ohlcv("EUR/USD", "90m", 30)

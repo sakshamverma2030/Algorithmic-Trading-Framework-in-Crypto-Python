@@ -107,6 +107,7 @@ class DataSource(str, Enum):
     EXCHANGE = "exchange"    # CCXT REST download, cached in SQLite
     SYNTHETIC = "synthetic"  # regime-switching GBM (offline research / tests)
     CSV = "csv"              # user-supplied OHLCV file
+    FOREX = "forex"          # Yahoo Finance daily/interbank FX (EUR/USD, GBP/USD, ...)
 
 
 class RegimeMethod(str, Enum):

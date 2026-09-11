@@ -394,6 +394,100 @@ class ExchangeDataFetcher:
 
 
 # --------------------------------------------------------------------------------------
+# Yahoo Finance fetcher (Forex OHLCV – no API key required)
+# --------------------------------------------------------------------------------------
+_YAHOO_INTERVAL_MAP: dict[str, str] = {
+    "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+    "1h": "1h", "4h": "4h", "1d": "1d",
+}
+
+_YAHOO_RANGE_MAP: dict[str, str] = {
+    "1d": "5d", "5d": "5d",
+}
+
+
+def _yahoofinance_symbol(symbol: str) -> str:
+    """Convert 'EUR/USD' → 'EURUSD=X' (Yahoo Finance forex ticker)."""
+    s = symbol.replace("/", "").replace("-", "").upper()
+    if not s.endswith("=X"):
+        s += "=X"
+    return s
+
+
+def fetch_forex_ohlcv(symbol: str, timeframe: str, history_days: int) -> pd.DataFrame:
+    """Download FX OHLCV from Yahoo Finance (public chart API, no API key).
+
+    Returns a validated DataFrame; volume may be zero (interbank feed).
+    """
+    import requests as _requests  # imported lazily: only when forex is used
+
+    yahoo_sym = _yahoofinance_symbol(symbol)
+    interval = _YAHOO_INTERVAL_MAP.get(timeframe)
+    if interval is None:
+        raise DataLoaderError(
+            f"Yahoo Finance does not support timeframe '{timeframe}'. "
+            "Use 1m, 5m, 15m, 30m, 1h, 4h or 1d."
+        )
+
+    # Map days → Yahoo 'range' string
+    if history_days <= 5:
+        range_str = "5d"
+    elif history_days <= 30:
+        range_str = "1mo"
+    elif history_days <= 90:
+        range_str = "3mo"
+    elif history_days <= 180:
+        range_str = "6mo"
+    elif history_days <= 365:
+        range_str = "1y"
+    elif history_days <= 730:
+        range_str = "2y"
+    elif history_days <= 1825:
+        range_str = "5y"
+    else:
+        range_str = "max"
+
+    logger.info("Fetching %s %s from Yahoo Finance (range=%s, interval=%s)", symbol, timeframe, range_str, interval)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
+    params: dict[str, Any] = {"interval": interval, "range": range_str}
+    try:
+        resp = _requests.get(url, params=params, timeout=20,
+                             headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code == 401 or resp.status_code == 404:
+            raise DataLoaderError(
+                f"Yahoo Finance returned {resp.status_code} for '{symbol}'. "
+                "Check the symbol (e.g. EUR/USD, GBP/USD, USD/JPY)."
+            )
+        resp.raise_for_status()
+    except _requests.RequestException as exc:
+        raise DataLoaderError(f"Yahoo Finance network error: {exc}") from exc
+
+    result = resp.json()
+    chart = result.get("chart", {})
+    if chart.get("error"):
+        raise DataLoaderError(f"Yahoo Finance error: {chart['error'].get('description', chart['error'])}")
+    try:
+        data = chart["result"][0]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise DataLoaderError(f"Yahoo Finance returned no data for '{symbol}'") from exc
+
+    timestamps = data.get("timestamp", [])
+    quote = data["indicators"]["quote"][0]
+    if not timestamps:
+        raise DataLoaderError(f"Yahoo Finance returned 0 bars for '{symbol}'")
+
+    rows: list[list[float]] = []
+    for i, ts in enumerate(timestamps):
+        row = [quote[k][i] for k in ("open", "high", "low", "close", "volume")]
+        if row[3] is not None:  # close is the anchor; skip NaN-only bars
+            rows.append([ts * 1000, *(v if v is not None else 0.0 for v in row)])
+
+    df = ohlcv_frame(rows)
+    logger.info("Yahoo Finance returned %d bars for %s %s", len(df), symbol, timeframe)
+    return df
+
+
+# --------------------------------------------------------------------------------------
 # Synthetic market generator
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -524,6 +618,8 @@ class DataLoader:
             if d.csv_path is None:
                 raise DataLoaderError("CSV source selected but no csv_path configured (use --csv-path)")
             raw = load_csv(d.csv_path)
+        elif source is DataSource.FOREX:
+            raw = fetch_forex_ohlcv(d.symbol, d.timeframe, d.history_days)
         else:  # pragma: no cover - enum exhausted
             raise DataLoaderError(f"Unsupported data source {source}")
 
