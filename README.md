@@ -1,13 +1,17 @@
 # Ichimoku Cloud Crypto Trading System
 
-An end-to-end quantitative trading system for cryptocurrency markets built around the
+An end-to-end quantitative trading system for **crypto and Forex** markets built around the
 **Ichimoku Kinko Hyo** strategy. It covers data ingestion, vectorised and event-driven
 backtesting with realistic execution costs, risk management, performance analytics and
 charts, and an asynchronous real-time engine that trades automatically in **paper**, **demo
 (exchange testnet)** or **real** mode.
 
+Crypto data comes live from Binance (CCXT); Forex spot pairs (EUR/USD, GBP/USD, USD/JPY, ...)
+are downloaded free from Yahoo Finance and backtested offline. The real-time engine runs on
+crypto only.
+
 ```
-Data fetch (CCXT / SQLite) -> Signals (Ichimoku) -> Backtests (vectorised + event-driven)
+Data fetch (CCXT / Yahoo Finance / SQLite) -> Signals (Ichimoku + overlays) -> Backtests (vectorised + event-driven)
         -> Analytics & charts -> Real-time engine (paper / demo / real)
 ```
 
@@ -22,7 +26,7 @@ Data fetch (CCXT / SQLite) -> Signals (Ichimoku) -> Backtests (vectorised + even
 | File | Responsibility |
 |---|---|
 | `config.py` | Frozen dataclass configuration (exchange, data, strategy, costs, risk, backtest, live), Ichimoku presets, env/`.env` secrets, JSON-lines structured logging |
-| `data_loader.py` | CCXT paginated OHLCV download with retry/back-off, validation and gap report, SQLite cache (idempotent upsert, incremental refresh), CSV/Parquet, synthetic regime-switching GBM generator |
+| `data_loader.py` | CCXT paginated OHLCV download with retry/back-off, validation and gap report, SQLite cache (idempotent upsert, incremental refresh), Yahoo Finance Forex download (no API key), CSV/Parquet, synthetic regime-switching GBM generator |
 | `indicators.py` | Vectorised Ichimoku (all five lines + Kumo + projection), Wilder ATR (TA-Lib if installed), volatility-regime adaptive Ichimoku |
 | `strategy.py` | Signal rules (long / short / exit), vectorised position state machine, latest-bar snapshot for live trading |
 | `risk.py` | Cost model (fees, spread, slippage, square-root impact), fixed-fractional & Kelly sizing, ATR/Kumo stops, trailing stops, intrabar fill rules, circuit breaker. Shared by backtester and live engine |
@@ -82,6 +86,8 @@ python main.py compare                                 # standard vs crypto vs c
 python main.py optimize --metric sharpe                # IS/OOS grid search + heatmap
 python main.py live                                    # paper trading on live market data
 python main.py live --source synthetic --replay-bars 800   # offline paper-trading replay
+python main.py backtest --source forex --symbol EUR/USD --timeframe 1h --days 180   # Forex backtest
+python main.py momentum --source forex --symbol EUR/USD --timeframe 1h              # momentum on EUR/USD
 ```
 
 Useful flags: `--allow-short` (derivatives / margin only), `--cross-lookback N`, `--no-chikou`,
@@ -318,6 +324,9 @@ config parsing, and **live-replay vs backtest parity**.
   trading (order-book walking) and Binance Spot Testnet orders were exercised end-to-end, including
   fee-adjusted fills and the SQLite trade journal. Real mainnet orders have not been run; only
   testnet funds should be used until the strategy itself is proven.
+* **Forex is backtest-only.** `--source forex` downloads EUR/USD, GBP/USD, USD/JPY, etc. from Yahoo
+  Finance (free, no API key). Forex OHLCV carries no volume, so volume-weighted metrics show zeros,
+  and the real-time engine trades crypto only — Forex positions are not executed with real money.
 * **Backtest results on real data are currently negative.** As of the last verified runs, the
   long-only preset variants lost money on BTC/USDT 1h and ETH/USDT 1h (profit factors 0.4-0.7) and
   barely traded on BTC 1d, in a period where buy-and-hold rose. The in-sample parameter optimiser
