@@ -1,6 +1,6 @@
 # A Systematic Framework for Backtesting and Live Paper Trading of Quantitative Cryptocurrency Strategies
 
-**Author:** Saksham Verma  
+**Author:** Saksham  
 **Affiliation:** B.Tech Final Year (Capstone Project)  
 **Date:** September 2026
 
