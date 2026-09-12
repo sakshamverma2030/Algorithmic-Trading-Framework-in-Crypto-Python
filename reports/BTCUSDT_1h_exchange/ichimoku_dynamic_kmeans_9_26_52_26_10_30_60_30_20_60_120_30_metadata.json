@@ -1,0 +1,140 @@
+{
+  "name": "Ichimoku dynamic kmeans (9/26/52/26 | 10/30/60/30 | 20/60/120/30)",
+  "engine": "event-driven",
+  "strategy": "Ichimoku dynamic kmeans (9/26/52/26 | 10/30/60/30 | 20/60/120/30)",
+  "symbol": "BTC/USDT",
+  "timeframe": "1h",
+  "periods_per_year": 8760.0,
+  "initial_capital": 10000.0,
+  "total_fees": 671.8405266455876,
+  "total_slippage": 222.54011034640297,
+  "total_financing": 0.0,
+  "skipped_entries": 0,
+  "risk_free_rate": 0.0,
+  "benchmark_label": "Buy & Hold",
+  "config": {
+    "exchange": {
+      "exchange_id": "binance",
+      "use_testnet": true,
+      "market_type": "spot",
+      "request_timeout_ms": 30000,
+      "max_retries": 5
+    },
+    "data": {
+      "symbol": "BTC/USDT",
+      "timeframe": "1h",
+      "history_days": 365,
+      "source": "exchange",
+      "csv_path": null,
+      "db_path": "C:\\Users\\saksh\\Documents\\Algorithmic Trading in Cryptocurrency\\data\\market_data.sqlite",
+      "synthetic_seed": 42,
+      "min_bars": 300
+    },
+    "strategy": {
+      "params": {
+        "tenkan": 9,
+        "kijun": 26,
+        "senkou_b": 52,
+        "displacement": 26
+      },
+      "dynamic": true,
+      "regime_presets": [
+        "standard",
+        "crypto",
+        "crypto_slow"
+      ],
+      "regime_lookback": 500,
+      "regime_low_quantile": 0.33,
+      "regime_high_quantile": 0.67,
+      "atr_period": 14,
+      "allow_short": false,
+      "cross_lookback": 1,
+      "require_chikou": true,
+      "require_kumo_twist": false,
+      "use_rsi_filter": true,
+      "rsi_period": 14,
+      "rsi_overbought": 70.0,
+      "rsi_oversold": 30.0,
+      "use_rsi_divergence": false,
+      "divergence_lookback": 10,
+      "regime_method": "kmeans",
+      "kmeans_clusters": 3,
+      "kmeans_fit_iters": 20
+    },
+    "costs": {
+      "maker_fee": 0.001,
+      "taker_fee": 0.001,
+      "half_spread_bps": 1.0,
+      "slippage_bps": 2.0,
+      "impact_coefficient": 0.5,
+      "use_market_impact": true,
+      "borrow_rate_annual": 0.05
+    },
+    "risk": {
+      "initial_capital": 10000.0,
+      "sizing_method": "fixed_fractional",
+      "risk_per_trade": 0.01,
+      "kelly_multiplier": 0.5,
+      "kelly_lookback_trades": 30,
+      "kelly_min_trades": 10,
+      "max_risk_per_trade": 0.03,
+      "max_position_pct": 1.0,
+      "min_order_notional": 10.0,
+      "stop_method": "atr",
+      "atr_sl_multiplier": 2.0,
+      "atr_tp_multiplier": 4.0,
+      "cloud_buffer_atr": 0.5,
+      "cloud_max_stop_atr": 5.0,
+      "reward_risk_ratio": 2.0,
+      "use_take_profit": true,
+      "trailing_method": "none",
+      "trailing_atr_multiplier": 3.0,
+      "max_drawdown_limit": 0.2,
+      "circuit_breaker_cooldown_bars": 168,
+      "daily_loss_limit": 0.05
+    },
+    "backtest": {
+      "risk_free_rate": 0.0,
+      "report_dir": "C:\\Users\\saksh\\Documents\\Algorithmic Trading in Cryptocurrency\\reports",
+      "train_fraction": 0.7,
+      "benchmark_label": "Buy & Hold"
+    },
+    "live": {
+      "mode": "PAPER_TRADING",
+      "feed": "ccxtpro",
+      "warmup_bars": 400,
+      "bar_buffer": 1500,
+      "order_book_depth": 20,
+      "poll_interval_sec": 5.0,
+      "heartbeat_sec": 30.0,
+      "stale_feed_timeout_sec": 180.0,
+      "max_order_notional": 1000.0,
+      "flatten_on_exit": false,
+      "replay_bars": 500,
+      "replay_speed": 0.0,
+      "journal_db_path": "C:\\Users\\saksh\\Documents\\Algorithmic Trading in Cryptocurrency\\data\\trade_journal.sqlite"
+    },
+    "momentum": {
+      "lookback": 20,
+      "entry_threshold": 0.02,
+      "exit_threshold": 0.0,
+      "sma_period": 50,
+      "require_above_sma": false,
+      "allow_short": false,
+      "atr_period": 14
+    },
+    "pairs": {
+      "base_symbol": "BTC/USDT",
+      "quote_symbol": "ETH/USDT",
+      "lookback": 60,
+      "entry_zscore": 2.0,
+      "exit_zscore": 0.5,
+      "stop_zscore": 3.5,
+      "max_hold_bars": 120,
+      "min_correlation": 0.7,
+      "use_log_prices": true,
+      "atr_period": 14
+    }
+  },
+  "breaker_events": []
+}

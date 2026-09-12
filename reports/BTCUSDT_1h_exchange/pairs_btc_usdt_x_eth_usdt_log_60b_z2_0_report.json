@@ -1,0 +1,83 @@
+{
+  "name": "pairs BTC/USDT x ETH/USDT [log, 60b, z2.0]",
+  "period": {
+    "symbol": "BTC/USDT",
+    "timeframe": "1h",
+    "start": "2025-09-11 10:00:00+00:00",
+    "end": "2026-09-11 08:00:00+00:00",
+    "days": 364.9166666666667,
+    "bars": 8759,
+    "engine": "pairs"
+  },
+  "strategy": {
+    "final_equity": 7233.0305679492185,
+    "total_return": -0.2766969432050782,
+    "cagr": -0.2767504459930328,
+    "volatility": 0.34285979241171577,
+    "sharpe": -0.7739830097381412,
+    "sortino": -1.1459772375283432,
+    "calmar": -0.7900453235766751,
+    "max_drawdown": -0.35029692314376915,
+    "max_dd_duration": "310 days 12:00:00",
+    "psr": 0.22090101229460668,
+    "skew": 1.3950189072178956,
+    "kurtosis": 46.51232232951383,
+    "var_95": 0.0036589769163198733,
+    "cvar_95": 0.008728346401886659,
+    "exposure": 0.32149788788674505
+  },
+  "benchmark": {
+    "final_equity": 9295.908635058111,
+    "total_return": -0.06919909531810242,
+    "cagr": -0.06921433785534259,
+    "volatility": 0.07736337298320281,
+    "sharpe": -0.8883460670606669,
+    "sortino": -1.2381100579917863,
+    "calmar": -0.5144566115987352,
+    "max_drawdown": -0.134538727455073,
+    "max_dd_duration": "363 days 05:00:00",
+    "psr": 0.18718147758383313,
+    "skew": -0.0488630033401886,
+    "kurtosis": 10.003046721206728,
+    "var_95": 0.0012154288490836983,
+    "cvar_95": 0.0020595990771105225,
+    "exposure": 1.0
+  },
+  "relative": {
+    "alpha": -0.32080423886107806,
+    "beta": -0.8066383897839295,
+    "correlation": -0.1820110377261373,
+    "information_ratio": -0.5388093955112192,
+    "tracking_error": 0.3649568986046827
+  },
+  "trades": {
+    "total_trades": 121,
+    "long_trades": 56,
+    "short_trades": 65,
+    "win_rate": 0.3140495867768595,
+    "profit_factor": 0.7046399671169811,
+    "avg_win_pct": 0.01931182366104772,
+    "avg_loss_pct": -0.012364474000653944,
+    "payoff_ratio": 1.5618799198434432,
+    "expectancy": -22.86751596736183,
+    "expectancy_pct": -0.002416545809375735,
+    "avg_r_multiple": NaN,
+    "largest_win": 881.9072018882198,
+    "largest_loss": -606.3169305091214,
+    "avg_trade_duration": "0 days 23:16:21.818000",
+    "median_trade_duration": "0 days 20:00:00",
+    "avg_bars_held": 23.272727272727273,
+    "max_consecutive_losses": 15,
+    "exit_reasons": {
+      "signal": 93,
+      "stop_loss": 28
+    }
+  },
+  "costs": {
+    "total_fees": 0.0,
+    "total_slippage": 0.0,
+    "total_financing": 0.0,
+    "skipped_entries": 0,
+    "breaker_trips": 0
+  }
+}

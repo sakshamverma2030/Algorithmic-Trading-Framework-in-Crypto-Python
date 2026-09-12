@@ -1,0 +1,53 @@
+==============================================================================
+ PERFORMANCE REPORT - long-only momentum 20b | entry +2% exit +0%
+ BTC/USDT 1h | 2026-03-15 14:00 -> 2026-09-11 12:00 UTC (180 days, 4,319 bars) | engine: event-driven
+==============================================================================
+ Metric                                            Strategy        Buy & Hold
+------------------------------------------------------------------------------
+ Final equity                                      9,345.11         10,880.95
+ Total return                                        -6.55%            +8.95%
+ Annualised return (CAGR)                           -12.84%           +19.00%
+ Annualised volatility                                12.1%             39.3%
+ Sharpe ratio                                        -1.073             0.639
+ Sortino ratio                                       -1.533             0.929
+ Calmar ratio                                        -1.121             0.647
+ Max drawdown                                       -11.45%           -29.36%
+ Max drawdown duration                             178d 11h          128d 01h
+ Probabilistic Sharpe (SR>0)                          22.6%             67.3%
+ Skewness (per bar)                                   0.436             0.247
+ Excess kurtosis (per bar)                           25.421            12.389
+ VaR 95% (per bar)                                     0.2%              0.6%
+ CVaR 95% (per bar)                                    0.3%              1.0%
+ Time in market                                       18.3%            100.0%
+------------------------------------------------------------------------------
+ TRADE STATISTICS
+ Total trades                                            58
+ Long / short trades                                 58 / 0
+ Win rate                                             36.2%
+ Profit factor                                        0.737
+ Average win                                         +1.36%
+ Average loss                                        -0.96%
+ Payoff ratio (avg win / avg loss)                    1.417
+ Expectancy per trade                                -11.29
+ Average R-multiple                                  -0.117
+ Largest win                                         176.32
+ Largest loss                                       -116.96
+ Average trade duration                              0d 13h
+ Median trade duration                               0d 14h
+ Max consecutive losses                                   6
+------------------------------------------------------------------------------
+ RELATIVE TO BENCHMARK
+ Alpha (annualised)                                 -16.50%
+ Beta                                                 0.139
+ Correlation                                          0.451
+ Information ratio                                   -1.074
+ Tracking error                                       35.5%
+------------------------------------------------------------------------------
+ EXECUTION COSTS & RISK CONTROLS
+ Fees paid                                           797.70
+ Slippage & impact paid                              268.36
+ Short financing paid                                  0.00
+ Entries skipped (size < minimum)                         0
+ Circuit-breaker trips                                    0
+ Exit reasons                            signal=36, stop_loss=14, take_profit=8
+==============================================================================
