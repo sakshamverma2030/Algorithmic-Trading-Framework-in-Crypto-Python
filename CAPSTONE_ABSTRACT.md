@@ -48,7 +48,7 @@ Hurst exponent, backtesting, event-driven simulation, transaction costs, risk ma
    name, guide, institution, date.
 2. **Motivation & problem statement** — volatile 24/7 markets, cost sensitivity, why a
    systematic + reproducible pipeline is needed.
-3. **Objectives** — implement Intermediate + Advanced ; realistic backtesting;
+3. **Objectives** — implement the intermediate + advanced strategy set; realistic backtesting;
    risk management; live/paper execution; honest evaluation.
 4. **System architecture** — data → indicators → strategies → backtest engines →
    risk/execution → analytics → live engine (one flow diagram).

@@ -14,7 +14,7 @@ difficult. This paper presents an end-to-end Python framework that unifies data
 acquisition, indicator engineering, strategy implementation, vectorised and event-driven
 backtesting, risk/execution modelling, performance analytics and a real-time paper/live
 engine. The strategy set spans a standard *intermediate & advanced* crypto strategy
-: Ichimoku Cloud, calendar anomalies, Aroon/RSI divergence,
+strategy set: Ichimoku Cloud, calendar anomalies, Aroon/RSI divergence,
 time-series and cross-sectional momentum, cointegrated pairs trading, K-Means market
 clustering and Hurst-exponent regime filtering.
 
@@ -48,7 +48,7 @@ hard is turning that data into a *defensible* trading system. Three problems dom
    ground truth of next-bar execution.
 
 This project builds a framework in which these three problems are first-class citizens, and
-uses it to implement and evaluate a full  of systematic strategies. The
+uses it to implement and evaluate the full set of systematic strategies. The
 contributions are:
 
 - A **two-engine backtesting design**: a vectorised research engine (full-notional,
@@ -292,7 +292,7 @@ output.
 ## 7. Conclusion & Future Work
 
 We presented a research-grade, honest, end-to-end framework for systematic crypto trading,
-implementing a full intermediate/advanced strategy  and demonstrating it on real
+implementing a full intermediate/advanced strategy set and demonstrating it on real
 data and in live paper trading. The contribution is validated infrastructure for cost-aware, causal
 evaluation — and a candid record that single-symbol retail timing strategies, once costs
 are included, do not simply work.

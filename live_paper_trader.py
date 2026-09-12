@@ -2,7 +2,7 @@
 live_paper_trader.py - real-time WebSocket ingestion, paper trading and CCXT live templates.
 
 Spec-facing facade around ``live_trader.py`` (the asynchronous trading engine) so the
- (WebSockets + paper simulator + CCXT live order module)
+pipeline structure (WebSockets + paper simulator + CCXT live order module)
 maps one-to-one onto the codebase.
 """
 

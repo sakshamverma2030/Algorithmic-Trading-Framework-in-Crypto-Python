@@ -2,7 +2,7 @@
 
 An end-to-end quantitative trading system for **cryptocurrency markets** built around the
 **Ichimoku Kinko Hyo** strategy, extended with a full intermediate & advanced strategy
- (calendar anomalies, Aroon/RSI
+set (calendar anomalies, Aroon/RSI
 divergence, K-Means asset clustering, cointegrated pairs trading, Hurst-exponent regime
 filtering, long-only momentum / alpha portfolios). It covers data ingestion, vectorised
 and event-driven backtesting with realistic execution costs, risk management,

@@ -231,7 +231,7 @@ banner(s, 6.95, 0.5, "Fairness rule: indicators only use PAST prices — the fut
 # ============================================================== 6. STRATEGIES
 s = prs.slides.add_slide(BLANK)
 bg(s)
-header(s, "Step 2b", "Strategies across the  — the full set", "6")
+header(s, "Step 2b", "Strategies — the full set", "6")
 card(s, 0.6, 1.6, 6.1, 5.3, title="INTERMEDIATE", accent=BLUE)
 bullets(s, 0.85, 2.4, 5.6, 4.2, [
     "Ichimoku — buy/sell on trend-line crosses",
