@@ -2,7 +2,7 @@
 backtester.py - Vectorised and event-driven backtesting engines.
 
 VectorizedBacktester
-    Research engine in the vectorised style: whole-array arithmetic, full notional,
+    Research engine (whole-array arithmetic): full notional,
     proportional costs, no stops. Thousands of parameter sets per minute, so it drives
     the parameter optimiser.
 

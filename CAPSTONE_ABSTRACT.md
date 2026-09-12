@@ -5,7 +5,8 @@
 Cryptocurrency markets trade continuously, with high volatility, fat-tailed returns and
 non-trivial transaction costs. This project presents an end-to-end Python framework for
 designing, backtesting, risk-managing and paper/live-trading systematic cryptocurrency
-strategies, implementing the strategy set of our the intermediate and advanced strategy set  on a single, reproducible codebase.
+strategies, implementing a full *intermediate and advanced* crypto strategy set
+(technical, statistical-arbitrage and ML) on a single, reproducible codebase.
 
 The system ingests OHLCV data from Binance (CCXT REST/WebSocket) with a cached SQLite
 store and a synthetic regime-switching GBM generator for offline research, and computes a
@@ -29,12 +30,12 @@ the live order book and CCXT-based testnet/live execution.
 
 The framework is validated by 53 unit tests (causality/no-look-ahead, synthetic regime
 data, cointegration, clustering and portfolio behaviour) and demonstrated on real Binance
-data. In the tested 180-day window every single-symbol strategy was unprofitable in a
-falling market, whereas the K-Means + momentum-alpha portfolio outperformed buy-and-hold
-(+3.4 %), illustrating that realistic cost/risk modelling and portfolio construction —
-rather than any single signal — dominate realised performance. All results are reported
-honestly as a validated research/execution pipeline with candidate (not yet proven)
-signals.
+data. In the tested 180-day window every single-symbol strategy was unprofitable, and the
+K-Means + momentum-alpha portfolio underperformed a BTC buy-and-hold (8,083.26 vs 9,574.27,
+−15.6%) although it beat its two weakest members — illustrating that realistic cost/risk
+modelling and portfolio construction — rather than any single signal — are what the
+pipeline reliably delivers. All results are reported honestly as a validated
+research/execution pipeline with candidate (not yet proven) signals.
 
 **Keywords:** algorithmic trading, cryptocurrency, Ichimoku, pairs trading, K-Means,
 Hurst exponent, backtesting, event-driven simulation, transaction costs, risk management.
@@ -62,7 +63,7 @@ Hurst exponent, backtesting, event-driven simulation, transaction costs, risk ma
 9. **Results — single-symbol** — comparison table (BTC/USDT 1h 180d) + equity chart;
    note the falling-market sample.
 10. **Results — portfolio & robustness** — K-Means clusters, momentum-alpha vs
-    buy-and-hold (+3.4 %); tests/causality.
+    buy-and-hold (−15.6% vs BTC; still above ADA/XRP); tests/causality.
 11. **Discussion & limitations** — sample negative for singles, turnover/cost drag,
     sklearn DLL block → scipy fallback, forward-testing required.
 12. **Conclusion & future work** — ML return prediction (XGBoost/LSTM), mean-variance/HRP

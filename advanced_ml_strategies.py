@@ -1,5 +1,5 @@
 """
-advanced_ml_strategies.py - "Advanced" module.
+advanced_ml_strategies.py - Advanced / ML strategy modules.
 
     1. KMeansAssetClusterer      - unsupervised clustering of assets in an
                                    (volatility, momentum, volume) feature space.
@@ -369,7 +369,8 @@ class MomentumAlphaPortfolio:
             equity[i] = equity[i - 1] * (1.0 + ret_t)
 
         curve = pd.DataFrame({"equity": equity * initial_capital}, index=closes.index)
-        curve["benchmark"] = initial_capital * closes.iloc[:, 0] / closes.iloc[0, 0]
+        first = next((s for s in self.cfg.universe if s in closes.columns), closes.columns[0])
+        curve["benchmark"] = initial_capital * closes[first] / closes[first].iloc[0]
         trades_df = pd.DataFrame(trades)
         return curve, trades_df
 

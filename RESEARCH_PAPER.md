@@ -13,17 +13,20 @@ transaction costs, making the design and *honest* evaluation of systematic strat
 difficult. This paper presents an end-to-end Python framework that unifies data
 acquisition, indicator engineering, strategy implementation, vectorised and event-driven
 backtesting, risk/execution modelling, performance analytics and a real-time paper/live
-engine. The strategy set spans the "Intermediate & Advanced" : Ichimoku Cloud, calendar anomalies, Aroon/RSI divergence,
+engine. The strategy set spans a standard *intermediate & advanced* crypto strategy
+: Ichimoku Cloud, calendar anomalies, Aroon/RSI divergence,
 time-series and cross-sectional momentum, cointegrated pairs trading, K-Means market
 clustering and Hurst-exponent regime filtering.
 
 The framework is validated with 53 unit tests that enforce causality (no look-ahead) and
 demonstrated on real Binance data (BTC/USDT 1h, 4,319 bars, 180 days). With zero-cost
 assumptions removed and 0.1% per-side fees plus slippage applied, every single-symbol
-strategy underperforms buy-and-hold in the (falling) sample, which we report transparently;
-by contrast, a K-Means-clustered, long-only momentum portfolio adds value over
-buy-and-hold (+3.4%). A 14-hour live paper-trading session executed 57 round-trip trades
-through an order-book-walking simulator with ATR stops. We argue the framework's
+strategy underperforms buy-and-hold in the sample, which we report transparently; the
+K-Means-clustered, long-only momentum portfolio also underperformed a BTC buy-and-hold
+(8,083.26 vs 9,574.27, −15.6%) while still beating its two weakest members (ADA, XRP).
+A paper/live engine ran overnight on BTC/USDT 1m and traded through an order-book-walking
+simulator with ATR stops; the full journal (paper + replay + live) records 57 round-trip
+trades and 116 fills. We argue the framework's
 contribution is validated *plumbing* — realistic costs, risk and causality — rather than a
 proven profitable signal, and outline the path to forward-testing ML-driven signals.
 
@@ -232,20 +235,26 @@ holds the top-2 assets equal-weight, rebalancing every 10 bars.
 
 | Metric | Portfolio | Buy & hold BTC/USDT |
 |---|---|---|
-| Final equity | **8,001.93** | 7,735.85 |
-| Outperformance | **+3.4%** | — |
+| Final equity | 8,083.26 | 9,574.27 |
+| Outperformance | **−15.6%** | — |
 | Rebalances / trades | 348 | — |
 
-K-Means separated a "low-vol, high-momentum" cluster (BTC; cluster 2) from mid-vol alts
-(ETH/SOL) and high-vol alts (ADA/XRP) on the sample, and the equal-weight long-only rule
-stayed in the better-behaved names — adding value in a falling window while single-asset
-hold lost.
+In the same window the altcoins polarised: ETH and SOL rallied (+11% each), while ADA fell
+~22% and XRP ~7%. The equal-weight rule split the difference — it beat the two laggards it
+might have held but trailed the single BTC hold, so the experiment did **not** demonstrate
+alpha. Its value is the *plumbing*: quotas, rebalancing loop, and honest comparison against
+a real benchmark (the earlier +3.4% "beating buy-and-hold" figure was traced to a bug that
+compared the portfolio against ADA/USDT instead of BTC/USDT, and was corrected).
 
 ### 5.3 Live paper trading
 
-A 1-minute BTC/USDT paper session running 14 hours on ccxt.pro executed **57 round-trip
-trades** (116 fills). The order-book walker produced fills with documented 2 bps slippage;
-the journal recorded both `take_profit` and `stop_loss` exits, including a +5.5% round trip.
+The engine ran **live overnight** on BTC/USDT 1m (Sep 11 13:18 → Sep 12 02:37 UTC, ~13
+hours, 800 equity samples): it opened 5 positions on closing bars — 4 were stopped out and
+1 hit take-profit (net −$162), matching the backtest's behaviour. Across the whole journal
+(paper + replay + live sessions) the engine recorded **57 round-trip trades / 116 fills**;
+the spread of results was wide (best single trade +$222, worst −$159) and the journal's
+total net P&L is −$869. These are plumbing demonstrations — correct execution and honest
+bookkeeping — not evidence of a profitable edge.
 This validates the execution engine (fills, stops, financing, journaling) as live-sim ready.
 
 ### 5.4 Portfolio cluster details (real data, 120d)
@@ -283,8 +292,8 @@ output.
 ## 7. Conclusion & Future Work
 
 We presented a research-grade, honest, end-to-end framework for systematic crypto trading,
-implementing a full independent  and demonstrating it on real data and in
-live paper trading. The contribution is validated infrastructure for cost-aware, causal
+implementing a full intermediate/advanced strategy  and demonstrating it on real
+data and in live paper trading. The contribution is validated infrastructure for cost-aware, causal
 evaluation — and a candid record that single-symbol retail timing strategies, once costs
 are included, do not simply work.
 
@@ -298,21 +307,20 @@ transaction-cost-adjusted parameter optimisation.
 
 ## 8. References
 
-1. intermediate & advanced strategy learning material.
-2. V. Vidyamurthy, *Pairs Trading: Quantitative Methods and Analysis*. Wiley, 2004.
-3. E. Gatev, W. Goetzmann and K. Rouwenhorst, "Pairs Trading: Performance of a
+1. V. Vidyamurthy, *Pairs Trading: Quantitative Methods and Analysis*. Wiley, 2004.
+2. E. Gatev, W. Goetzmann and K. Rouwenhorst, "Pairs Trading: Performance of a
    Relative-Value Arbitrage Rule," *Review of Financial Studies*, 2006.
-4. N. Jegadeesh and S. Titman, "Returns to Buying Winners and Selling Losers:
+3. N. Jegadeesh and S. Titman, "Returns to Buying Winners and Selling Losers:
    Implications for Stock Market Efficiency," *Journal of Finance*, 1993.
-5. E. J. Peters, *Fractal Market Analysis* (rescaled-range Hurst), Wiley, 1994.
-6. B. Mandelbrot, "The Variation of Certain Speculative Prices," *Journal of Business*, 1963.
-7. J. MacQueen, "Some Methods for Classification and Analysis of Multivariate
+4. E. J. Peters, *Fractal Market Analysis* (rescaled-range Hurst), Wiley, 1994.
+5. B. Mandelbrot, "The Variation of Certain Speculative Prices," *Journal of Business*, 1963.
+6. J. MacQueen, "Some Methods for Classification and Analysis of Multivariate
    Observations," *Proc. 5th Berkeley Symp.*, 1967 (K-Means).
-8. S. A. Dickey and W. A. Fuller, "Likelihood Ratio Statistics for Autoregressive Time
+7. S. A. Dickey and W. A. Fuller, "Likelihood Ratio Statistics for Autoregressive Time
    Series with a Unit Root," *JASA*, 1979.
-9. A. Damodaran, *Investment Philosophies* (momentum & calendar effects), Wiley.
-10. Basilico/E. for square-root market impact; Binance API documentation, and CCXT
-    library documentation.
+8. A. Damodaran, *Investment Philosophies* (momentum & calendar effects), Wiley.
+9. Basilico/E. for square-root market impact; Binance API documentation, and CCXT
+   library documentation.
 
 ---
 

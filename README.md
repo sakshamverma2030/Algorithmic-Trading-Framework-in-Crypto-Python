@@ -1,8 +1,8 @@
 # Crypto Algo Trading & Backtesting System
 
 An end-to-end quantitative trading system for **cryptocurrency markets** built around the
-**Ichimoku Kinko Hyo** strategy, extended with the full "Crypto Trading
-Strategies: Intermediate and Advanced"  (calendar anomalies, Aroon/RSI
+**Ichimoku Kinko Hyo** strategy, extended with a full intermediate & advanced strategy
+ (calendar anomalies, Aroon/RSI
 divergence, K-Means asset clustering, cointegrated pairs trading, Hurst-exponent regime
 filtering, long-only momentum / alpha portfolios). It covers data ingestion, vectorised
 and event-driven backtesting with realistic execution costs, risk management,
@@ -29,14 +29,14 @@ Data fetch (CCXT / SQLite) -> Signals (Ichimoku + overlays + ML strategies) -> B
 
 | File | Responsibility |
 |---|---|
-| `config.py` | Frozen dataclass configuration: exchange, data, strategy, costs, risk, backtest, live settings; Ichimoku presets (standard/crypto/crypto_slow/dynamic); course-aligned strategy params — `CalendarConfig`, `DivergenceConfig`, `HurstConfig`, `PortfolioConfig`, `MomentumConfig`, `PairsConfig`; env/`.env` secrets; JSON-lines structured logging setup. All W=validation runs in dataclass `__post_init__` (bad config → `ConfigError`). |
+| `config.py` | Frozen dataclass configuration: exchange, data, strategy, costs, risk, backtest, live settings; Ichimoku presets (standard/crypto/crypto_slow/dynamic); intermediate & advanced strategy params — `CalendarConfig`, `DivergenceConfig`, `HurstConfig`, `PortfolioConfig`, `MomentumConfig`, `PairsConfig`; env/`.env` secrets; JSON-lines structured logging setup. All W=validation runs in dataclass `__post_init__` (bad config → `ConfigError`). |
 | `data_loader.py` | One `DataLoader(cfg)` class: CCXT paginated OHLCV download (retry/back-off, gap report), SQLite cache (idempotent upsert, incremental refresh), CSV import/export, optional Parquet, and a synthetic regime-switching GBM generator (`MarketRegime`, hidden Markov chain over volatility regimes) for offline research and tests. |
 | `indicators.py` | Pure-vectorised indicator library: Ichimoku all five lines + Kumo + projection, Wilder ATR (TA-Lib fallback), RSI + **causal** divergence detector, Aroon, Bollinger Bands, rescaled-range **Hurst exponent**, **ADF** stationarity test (statsmodels), and an adaptive volatility-regime Ichimoku (quantile or K-Means labels via scipy `kmeans2`, sklearn optional). Exposes `HAS_SKLEARN` / `HAS_STATSMODELS` feature flags. |
 | `strategy.py` | `IchimokuStrategy` — the core long/short/exit radar rules evaluated on close-of-bar t, a vectorised position state machine, and a latest-bar `SignalSnapshot` for the live engine. Defines the **signal-frame contract** (`long_entry`, `short_entry`, `exit_long`, `exit_short`, `atr`, `cloud_top`, `cloud_bottom`, ...) that every strategy and backtest engine shares. |
 | `momentum.py` | `MomentumStrategy` — long/short time-series momentum (`Close_t/Close_{t-lookback}-1` vs entry/exit thresholds, optional SMA filter), reuse of the exact same signal-frame contract + risk engine. |
 | `pairs.py` | `CointegrationAnalyzer`, `check_pair` and the pairs backtest machinery — rolling OLS hedge ratio on log prices, stationary spread, z-score entry/exit/stop bands, forced close on max-hold; returns a standard `BacktestResult`. |
-| `intermediate_strategies.py` | "Intermediate" layer: re-exports `IchimokuStrategy`/`SignalSnapshot`, adds `CalendarAnomalyStrategy` (causal expanding-mean hourly / day-of-week seasonal profiles) and `AroonRsiDivergenceStrategy` (Aroon trend gate + RSI divergence entries). |
-| `advanced_ml_strategies.py` | "Advanced" layer: `KMeansAssetClusterer` (volatility/momentum/volume features — sklearn `KMeans`, scipy `kmeans2` fallback), `rolling_hurst` + `HurstTrendStrategy` (H>0.5 trend / H<0.5 reversion regime gate combined with RSI), `MomentumAlphaPortfolio` (cross-sectional `rank(ret2)+rank(retL)-2·rank(vol)`, equal-weight top-N, periodic rebalance), plus re-exports of the pairs modules. |
+| `intermediate_strategies.py` | "Intermediate" strategy layer: re-exports `IchimokuStrategy`/`SignalSnapshot`, adds `CalendarAnomalyStrategy` (causal expanding-mean hourly / day-of-week seasonal profiles) and `AroonRsiDivergenceStrategy` (Aroon trend gate + RSI divergence entries). |
+| `advanced_ml_strategies.py` | "Advanced / ML" strategy layer: `KMeansAssetClusterer` (volatility/momentum/volume features — sklearn `KMeans`, scipy `kmeans2` fallback), `rolling_hurst` + `HurstTrendStrategy` (H>0.5 trend / H<0.5 reversion regime gate combined with RSI), `MomentumAlphaPortfolio` (cross-sectional `rank(ret2)+rank(retL)-2·rank(vol)`, equal-weight top-N, periodic rebalance), plus re-exports of the pairs modules. |
 | `risk.py` | Cost model (taker/maker fees, half-spread, slippage, square-root market impact `I=Y·σ·√(Q/V)`, financing), fixed-fractional & half-Kelly position sizers, ATR/Kumo stops, Chandelier/Kijun trailing stops, conservative intrabar fill rules, and the drawdown/daily-loss circuit breaker. Shared verbatim by backtester and live engine. |
 | `backtester.py` | `VectorizedBacktester` (full-notional, proportional costs, ms-fast, drives the optimiser), `EventDrivenBacktester` (bar-by-bar mirror of the live engine: signals on close → fills at next open, risk sizing, stops, breakers), `compare` preset runner, and in-sample/out-of-sample `ParameterOptimizer`. Returns `BacktestResult` (equity, trades, signals, metadata). |
 | `analytics.py` | `PerformanceAnalyzer` + `ChartVisualizer`: Sharpe/Sortino/Calmar/CAGR, drawdown depth & duration, probabilistic Sharpe, VaR/CVaR, alpha/beta, full trade statistics, and all Matplotlib charts (Ichimoku candlestick, dashboard, trade analysis, optimisation heatmaps, preset comparison). |
@@ -50,7 +50,7 @@ Data fetch (CCXT / SQLite) -> Signals (Ichimoku + overlays + ML strategies) -> B
 |---|---|
 | `tests/test_core.py` | Core engine tests: textbook Ichimoku values, TA-Lib-compatible Wilder ATR, no-look-ahead (static + dynamic), position FSM, cost model, sizers, intrabar stop/target rules, trailing ratchet, circuit breaker, accounting identities, vectorised timing, metrics, data validation, SQLite/CSV round trips, order-book walking, fee-adjusted fills, CLI parsing, **backtest-vs-live-replay parity** (22 tests). |
 | `tests/test_extra_strategies.py` | RSI divergence overlay, K-Means regime labels (causality + bounds), momentum strategy (causality, trend behaviour, live selection) and cointegrated-pairs behaviour on synthetic data. |
-| `tests/test_resume_strategies.py` | resume strategies: Aroon bounds/monotonicity, Hurst trend-vs-revert separation, rolling-Hurst causality, ADF stationarity detection, Bollinger geometry, calendar bucket causality, divergence signal completeness + require/relax modes, Hurst strategy runs clean, K-Means clusters assets on features, momentum-alpha portfolio rebalances into top-N and rejects empty universes (14 tests). |
+| `tests/test_resume_strategies.py` | Strategy behaviour tests: Aroon bounds/monotonicity, Hurst trend-vs-revert separation, rolling-Hurst causality, ADF stationarity detection, Bollinger geometry, calendar bucket causality, divergence signal completeness + require/relax modes, Hurst strategy runs clean, K-Means clusters assets on features, momentum-alpha portfolio rebalances into top-N and rejects empty universes (14 tests). |
 | `scripts/compare_all.py` | Cross-strategy scorecard: runs every single-symbol strategy on one dataset through the event-driven engine, writes `strategy_comparison.csv` + a normalised equity chart into `reports/<SYMBOL>_<TF>_<source>/`. |
 | `scripts/paper_to_pdf.py` | Renders `RESEARCH_PAPER.md` → `RESEARCH_PAPER.pdf` (markdown → HTML → xhtml2pdf) with inline styling. |
 | `requirements.txt` | Core deps (numpy, pandas, scipy, matplotlib, ccxt, pytest) + ML stack (`scikit-learn` K-Means, `statsmodels` ADF); optional TA-Lib / pyarrow commented. |
@@ -64,7 +64,7 @@ Data fetch (CCXT / SQLite) -> Signals (Ichimoku + overlays + ML strategies) -> B
 | `CAPSTONE_ABSTRACT.md` | 250-word abstract + 12-slide presentation outline + viva demo script. |
 | `RESEARCH_PAPER.md` / `.pdf` | IEEE-style research paper: abstract, intro, related work, methodology, validation protocol, real results, discussion, conclusion, references. |
 | `reports/BTCUSDT_1h_exchange/` | Committed real Binance backtest evidence: per-strategy report `.txt`/`.json`, equity curves CSV, trades CSV, metadata, chart PNGs, `strategy_comparison.*`, portfolio equity/rebalances, preset comparison, optimisation heatmap. |
-| `data/trade_journal_snapshot.sqlite` | Snapshot of the 14-hour live paper session (57 round-trip trades, 116 fills) committed as evidence; the live DB `data/trade_journal.sqlite` stays git-ignored. |
+| `data/trade_journal_snapshot.sqlite` | Snapshot of the live engine's journal committed as evidence: 57 round-trip trades / 116 fills across paper + replay sessions, incl. a ~13 h overnight live run (5 trades); the live DB `data/trade_journal.sqlite` stays git-ignored. |
 
 ### 1.4 Runtime outputs (git-ignored unless committed as evidence)
 
@@ -381,16 +381,18 @@ The **53 tests** are split across three files:
 * **Exchange connectivity has been validated against Binance.** Real 365/730-day OHLCV history
   downloads (REST), the live WebSocket feed, warm-up, and the real-time engine all run. Paper
   trading (order-book walking) and Binance Spot Testnet orders were exercised end-to-end, including
-  fee-adjusted fills and the SQLite trade journal. A 14-hour live paper session (BTC/USDT 1m) took
-  57 round-trip trades/116 fills; the journal snapshot is committed at
+  fee-adjusted fills and the SQLite trade journal. A live overnight paper run (BTC/USDT 1m,
+  Sep 11 → 12 2026) executed 5 trades with a ~13 h session; the full journal (paper + replay +
+  live) holds 57 round-trip trades/116 fills and is committed at
   `data/trade_journal_snapshot.sqlite`. Real mainnet orders have not been run; only testnet funds
   should be used until the strategy itself is proven.
 * **Backtest results on real data are currently negative.** As of the last verified runs, the
   long-only preset variants lost money on BTC/USDT 1h and ETH/USDT 1h (profit factors 0.4-0.7) and
   barely traded on BTC 1d, in a period where buy-and-hold rose. The in-sample parameter optimiser
-  winner overfits (IS Sharpe ~0.49 collapses to OOS ~-2.7). Two exceptions stand out: pairs trading
-  and the K-Means + momentum-alpha portfolio, which beat buy-and-hold (+3.4% on BTC/ETH/SOL/ADA/XRP
-  120d). Treat the system as validated plumbing with an unvalidated strategy; forward-test in
+  winner overfits (IS Sharpe ~0.49 collapses to OOS ~-2.7). Pairs trading lost too in its longer
+  310-day window, and the K-Means + momentum-alpha portfolio underperformed a BTC buy-and-hold
+  (−15.6% on BTC/ETH/SOL/ADA/XRP 120d, while still beating ADA/XRP). Treat the system as validated
+  plumbing with an unvalidated strategy; forward-test in
   paper/demo before any real funds.
 * Documentation: `CAPSTONE.md` (capstone report), `CAPSTONE_ABSTRACT.md` (abstract + slide outline),
   `RESEARCH_PAPER.md`/`.pdf` (IEEE-style paper with real results).

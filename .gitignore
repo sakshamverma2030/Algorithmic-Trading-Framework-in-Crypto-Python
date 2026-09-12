@@ -8,3 +8,10 @@ logs/
 reports/
 *.sqlite
 *.sqlite-*
+
+# Local-only deliverables (never commit)
+PROJECT_PRESENTATION.pptx
+PROJECT_PRESENTATION_user_backup.pptx
+PROJECT_PRESENTATION_manual_edits.pptx
+charts_ppt/
+scripts/make_ppt.py

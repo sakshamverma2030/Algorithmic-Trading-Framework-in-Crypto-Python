@@ -1,4 +1,4 @@
-"""Tests for the course-aligned strategies: calendar anomalies, Aroon/RSI
+"""Tests for the intermediate & advanced strategies: calendar anomalies, Aroon/RSI
 divergence, Hurst-exponent filter, K-Means clustering and the cross-sectional
 momentum-alpha portfolio, plus the new indicators (Aroon, Bollinger, ADF)."""
 

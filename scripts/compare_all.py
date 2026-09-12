@@ -1,6 +1,6 @@
 """Cross-strategy comparison on a single real dataset.
 
-Runs every course-aligned single-symbol strategy through the event-driven
+Runs every candidate single-symbol strategy through the event-driven
 backtester on the same OHLCV frame and prints a scorecard, writes
 reports/<SYMBOL>_<TF>_<source>/strategy_comparison.csv and equity-chart png.
 

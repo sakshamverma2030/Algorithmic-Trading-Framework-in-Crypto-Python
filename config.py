@@ -347,7 +347,7 @@ class PairsConfig:
 
 
 # --------------------------------------------------------------------------------------
-# Intermediate strategies ("Intermediate")
+# Intermediate strategies
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class CalendarConfig:
@@ -408,7 +408,7 @@ class DivergenceConfig:
 
 
 # --------------------------------------------------------------------------------------
-# Advanced / ML strategies ("Advanced")
+# Advanced / ML strategies
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class HurstConfig:

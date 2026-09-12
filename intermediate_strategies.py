@@ -1,5 +1,5 @@
 """
-intermediate_strategies.py - "Intermediate" module.
+intermediate_strategies.py - Intermediate strategy modules.
 
 Implements the three intermediate strategy families on top of the framework's shared
 signal-frame contract (``long_entry`` / ``short_entry`` / ``exit_long`` / ``exit_short`` /
