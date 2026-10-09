@@ -128,6 +128,8 @@ python main.py pipeline --source synthetic             # full pipeline offline, 
 python main.py pipeline                                # same on real Binance BTC/USDT 4h data
 python main.py fetch --symbol ETH/USDT --timeframe 15m --days 180
 python main.py backtest --preset crypto --sizing kelly --stop cloud --trailing kijun
+python main.py backtest --strategy momentum           # same engine, momentum signals
+python main.py backtest --strategy both               # run and report both
 python main.py compare                                 # standard vs crypto vs crypto_slow vs dynamic
 python main.py optimize --metric sharpe                # IS/OOS grid search + heatmap
 python main.py live                                    # paper trading on live market data

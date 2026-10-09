@@ -163,6 +163,29 @@ directional rather than like-for-like; and momentum's +36.2% carries a −20.6% 
 against Ichimoku's −13.0%, so risk-adjusted the two are closer than the headline returns
 suggest (Sharpe 0.94 vs 0.77).
 
+**Should momentum be the default?** Its +36.2% is the largest number in the table, so the
+same discipline was applied to it: a 72-configuration sweep (timeframe x lookback x entry
+threshold) with the 70/30 split, plus the ETH cross-check. The verdict is mixed and it was
+*not* promoted to the default.
+
+| | Ichimoku 4h | Momentum 4h |
+|---|---|---|
+| BTC full 3y | +19.3% | **+36.2%** |
+| BTC in-sample / out-of-sample | +9.5% / **+9.0%** | +28.1% / +6.4% |
+| BTC max drawdown | **−13.0%** | −20.6% |
+| BTC profit factor | **1.57** | 1.36 |
+| Best trade as share of profit | 100% | **65%** |
+| ETH in-sample / out-of-sample | +13.6% / −7.9% | +14.7% / −6.4% |
+| Median OOS return across its own grid | positive on 2h-1d | **negative on 1h-12h** |
+
+Momentum earns most of its three-year figure in the in-sample bull phase, carries half again
+the drawdown, and the median configuration of its own parameter grid loses out of sample on
+every timeframe except 1d - the opposite of the "robust region" criterion of Section 2.4. It is
+better than Ichimoku on exactly one axis, concentration: its profit survives the removal of
+its best trade (+1,255), while Ichimoku's does not. Both lose out of sample on ETH. Momentum
+is therefore selectable (`python main.py backtest --strategy momentum`) and reported, but
+Ichimoku - more balanced across halves, lower drawdown - remains the default.
+
 **Tooling note.** `scripts/compare_all.py` passed its argument list to `build_config()`
 instead of the parsed namespace, so `--symbol/--timeframe/--days` were silently ignored and
 every scorecard ran on the default window. Fixed; the table above is the first scorecard

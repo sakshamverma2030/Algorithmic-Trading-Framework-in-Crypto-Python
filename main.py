@@ -160,6 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fetch", parents=[common], help="download / update OHLCV data")
     bt = sub.add_parser("backtest", parents=[common], help="run backtests and produce the report and charts")
     bt.add_argument("--engine", choices=["event", "vectorised", "both"], default="both")
+    bt.add_argument("--strategy", choices=["ichimoku", "momentum", "both"], default="ichimoku",
+                    help="which signal generator to backtest (default: ichimoku)")
     sub.add_parser("compare", parents=[common], help="compare Ichimoku presets")
     opt = sub.add_parser("optimize", parents=[common], help="in-sample / out-of-sample parameter grid search")
     opt.add_argument("--metric", choices=["sharpe", "sortino", "cagr"], default="sharpe")
@@ -420,13 +422,19 @@ class TradingBotCLI:
             print(" NOTE: synthetic regime-switching GBM data - use it to test the system, not to judge the strategy.")
         return df
 
-    def backtest(self, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
-        result, report = self._run_backtest(IchimokuStrategy(self.cfg.strategy), engine)
-        if self.plots:
-            charts = self._visualizer().create_all(result, report)
-            print(" Charts:")
-            for path in charts:
-                print(f"   {path}")
+    def backtest(self, engine: str = "both", strategy: str = "ichimoku") -> tuple[BacktestResult, PerformanceReport]:
+        builders = {"ichimoku": lambda: IchimokuStrategy(self.cfg.strategy),
+                    "momentum": lambda: MomentumStrategy(self.cfg.momentum)}
+        names = list(builders) if strategy == "both" else [strategy]
+        result = report = None
+        for name in names:
+            result, report = self._run_backtest(builders[name](), engine)
+            if self.plots:
+                charts = self._visualizer().create_all(result, report)
+                print(" Charts:")
+                for path in charts:
+                    print(f"   {path}")
+        assert result is not None and report is not None
         return result, report
 
     def _run_backtest(self, strategy: Any, engine: str = "both") -> tuple[BacktestResult, PerformanceReport]:
@@ -812,7 +820,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "fetch":
             app.fetch()
         elif args.command == "backtest":
-            app.backtest(args.engine)
+            app.backtest(args.engine, args.strategy)
         elif args.command == "compare":
             app.compare()
         elif args.command == "optimize":
