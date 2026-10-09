@@ -21,7 +21,14 @@ clustering and Hurst-exponent regime filtering.
 The framework is validated with 53 unit tests that enforce causality (no look-ahead) and
 demonstrated on real Binance data (BTC/USDT 1h, 4,319 bars, 180 days). With zero-cost
 assumptions removed and 0.1% per-side fees plus slippage applied, every single-symbol
-strategy underperforms buy-and-hold in the sample, which we report transparently; the
+strategy underperforms buy-and-hold in that sample, which we report transparently. We then
+run a 384-configuration selection sweep (timeframe x Ichimoku preset x cross window x exit
+rule x stop width) over three years of BTC/USDT and choose on out-of-sample behaviour rather
+than on the best in-sample cell: removing the fixed take-profit and moving from 1h to 4h
+turns the Ichimoku system from −33.9% into +19.3% over the same three years, with maximum
+drawdown cut from −37.2% to −13.0% (buy-and-hold: +197.3%, −53.5%). That gain is concentrated
+in very few trades - the single best trade equals the entire three-year profit - so we report
+it as a cost-and-robustness finding rather than a proven edge. The
 K-Means-clustered, long-only momentum portfolio also underperformed a BTC buy-and-hold
 (8,083.26 vs 9,574.27, −15.6%) while still beating its two weakest members (ADA, XRP).
 A paper/live engine ran overnight on BTC/USDT 1m and traded through an order-book-walking
@@ -191,6 +198,16 @@ dashboards.
   keep 2σ geometry; calendar buckets use expanding means only; MomentumAlpha portfolio
   rebalances within top-N and rejects empty universes.
 - **Config**: misconfigurations (no calendar features, empty universe) raise `ConfigError`.
+- **Research/production parity**: replaying historical bars through the asynchronous live
+  engine reproduces the event-driven backtest trade for trade (side, entry/exit timestamps,
+  exit reason), so the configuration chosen in research is the configuration that trades.
+
+**Parameter-selection protocol.** Every tunable choice reported in Section 5.5 is made on a
+chronological 70/30 in-sample/out-of-sample split, repeated on a second independent data
+window, and cross-checked on a second asset. A configuration is adopted only if it is
+positive in *both* halves of *both* windows. The single best in-sample cell is explicitly
+rejected: the in-sample optimiser's winner collapses out of sample (IS Sharpe ~0.49 ->
+OOS ~-2.7).
 
 ---
 
@@ -223,7 +240,9 @@ Observations:
   fees+slippage (5,868 + 1,933) on ₹10,000 capital across 798 trades — its Sharpe
   collapses to −21.
 - **S1 Ichimoku** had the smallest loss and the best drawdown control (−5.5% vs −29.4%
-  benchmark), consistent with its built-in cloud trailing.
+  benchmark), consistent with its built-in cloud trailing. This row uses the *original*
+  defaults (1h bars, fixed 4xATR take-profit, no trailing stop); Section 5.5 shows that those
+  two choices, rather than the Ichimoku logic itself, caused most of the loss.
 - **S6 Hurst** and **S3 Calendar** show the cost of over-trading in noise; both are
   pattern-laden but commercially unproven.
 
@@ -267,6 +286,79 @@ This validates the execution engine (fills, stops, financing, journaling) as liv
 
 ---
 
+### 5.5 Timeframe and exit-rule selection (out-of-sample sweep)
+
+Sections 5.1-5.4 evaluate the strategy set at its original defaults. To separate *strategy
+logic* from *implementation choices*, `scripts/timeframe_sweep.py` backtests 384
+configurations - timeframe (1h, 2h, 4h, 6h, 12h, 1d) x preset (standard, crypto,
+crypto_slow, dynamic) x TK-cross window (1, 3 bars) x exit rule (fixed take-profit with or
+without trailing; trailing-only with Kijun or Chandelier/ATR) x stop width (2, 4 ATR) -
+on three years of BTC/USDT (5 Oct 2023 - 9 Oct 2026, 26,399 hourly bars resampled upward;
+buy-and-hold +197.3% with a −53.5% drawdown). Each run is split 70/30 in-sample /
+out-of-sample, and the whole sweep is repeated on an independent two-year window.
+
+**Finding 1 - the fixed take-profit is the dominant leak.** Trend systems earn from a thin
+right tail; a 4xATR target truncates exactly those trades while losers still run to the stop.
+
+| Exit rule | Median out-of-sample return |
+|---|---|
+| no take-profit + Kijun trailing stop | **+2.9%** |
+| no take-profit + Chandelier (ATR) trailing | 0.0% |
+| take-profit + Kijun trailing | 0.0% |
+| take-profit, no trailing (original default) | −1.2% |
+
+**Finding 2 - hourly bars lose to costs and whipsaw.** With the exit rule above:
+
+| Timeframe | Median trades (3y) | Median OOS return | Median OOS Sharpe | Median OOS drawdown |
+|---|---|---|---|---|
+| 1h | 224 | −3.4% | −0.24 | −14.5% |
+| 2h | 101 | +8.8% | 1.42 | −5.3% |
+| **4h** | **52** | **+3.9%** | **0.77** | **−4.3%** |
+| 6h | 40 | −1.9% | −0.63 | −3.5% |
+| 12h | 15 | +3.8% | 1.41 | −1.5% |
+| 1d | 9 | +1.4% | 0.95 | −1.1% |
+
+2h scored highest, but 4h with the `crypto` preset was the only combination positive in all
+four segments (both halves of both windows) with a usable trade count; 12h and 1d trade 9-15
+times in three years, too small a sample to trust.
+
+**Adopted configuration and effect.** 4h, preset 10/30/60/30, 3-bar TK-cross window, no
+take-profit, Kijun-sen trailing stop, 2xATR stop:
+
+| | Original (1h, TP, no trail) | Adopted (4h, Kijun trail, no TP) |
+|---|---|---|
+| Total return (3y) | **−33.9%** | **+19.3%** |
+| In-sample / out-of-sample | −17.8% / −19.6% | +9.5% / +9.0% |
+| Max drawdown | −37.2% | **−13.0%** |
+| Sharpe / Sortino | - | 0.77 / 1.31 |
+| Profit factor | 0.4-0.7 | 1.57 |
+| Trades / win rate | 240 / 32.1% | 67 / 26.9% |
+| Time in market | - | 13.3% |
+| Annualised alpha vs buy-and-hold | - | +3.5% |
+
+Year by year (strategy vs buy-and-hold): 2023 (Oct-Dec) −3.0% vs +53.2%; 2024 +14.9% vs
++121.1%; 2025 −5.0% vs −6.6%; 2026 (Jan-Oct) **+12.7% vs −6.4%**. The system is in the
+market 13.3% of the time, so it cannot track a tripling market; its contribution is drawdown
+control and positive performance when the trend turns.
+
+**Limits of this result, stated explicitly.**
+
+1. *Profit concentration.* Of 67 trades, 18 win and 49 lose; gross profit +5,336 against
+   gross loss −3,401 on 10,000 of capital. The best single trade (17-26 Aug 2026,
+   BTC 64.2k -> 78.4k) returns 1,937, while the whole three-year net profit is 1,934.
+   Removing that trade leaves the period flat; removing the best three leaves it at −1,432.
+   A long right tail is the intended behaviour of trend following, but with 67 trades the
+   headline figure carries little statistical weight.
+2. *Cross-asset decay.* The same configuration on three years of ETH/USDT 4h returns +4.6%
+   against +52.4% buy-and-hold, with a −13.1% drawdown against −68.0%: the drawdown benefit
+   transfers, the return does not.
+3. *A tempting configuration was rejected.* A Chandelier (ATR) trailing stop scores far
+   better on BTC (+34.8%, profit factor 1.90, best trade only 53% of profit) but loses on
+   ETH (−3.4%, profit factor 0.90). Under the protocol of Section 4 it was not adopted,
+   which is precisely the discipline the sweep exists to enforce.
+
+---
+
 ## 6. Discussion
 
 **What the framework proves.** The engineering contribution is real and measurable: causal
@@ -274,16 +366,33 @@ indicators, two backtesting engines with matching semantics, a realistic cost/ri
 and a live engine with verified paper execution. This is exactly what a *systematic* crypto
 pipeline must ship before any strategy can be trusted.
 
-**What the results say about retail strategies.** The single-symbol results are a sober and
-useful negative result. In a mildly rising 180-day BTC sample, every long-only timing
-strategy lost money, and turnover relative to costs predicts the outcome (calendar ≪ hurst
-≪ momentum ≈ ichimoku ≈ divergence in cost discipline). The portfolio result is the
-encouraging counterpoint: risk-diversification across clustered assets and cross-sectional
-ranking traded better than timing a single asset.
+**What the results say about retail strategies.** The single-symbol results at the original
+defaults are a sober and useful negative result. In a mildly rising 180-day BTC sample, every
+long-only timing strategy lost money, and turnover relative to costs predicts the outcome
+(calendar ≪ hurst ≪ momentum ≈ ichimoku ≈ divergence in cost discipline). The portfolio
+result is the encouraging counterpoint: risk-diversification across clustered assets and
+cross-sectional ranking traded better than timing a single asset.
 
-**Threats to validity.** (i) one market + one period; (ii) single-seed synthetic tests only;
-(iii) K-Means label non-determinism mitigated via scipy `kmeans2` seed + cluster-centre
-sorting; (iv) scikit-learn's KMeans was DLL-blocked by Windows Application Control on the
+**How much of the loss was the strategy, and how much the implementation.** Section 5.5
+answers this directly, and the answer is uncomfortable for the usual presentation of
+indicator strategies: two implementation choices — bar size and exit rule — moved the same
+Ichimoku logic on the same asset from −33.9% to +19.3% over three years and cut the drawdown
+from −37.2% to −13.0%. Neither choice touches the signal. Published indicator results that do
+not state the bar size, the exit rule and the cost model are therefore close to
+uninterpretable. Equally, the repaired configuration does not establish an edge: its profit
+sits in one trade, its magnitude does not transfer to ETH, and over the full three years it
+remains far behind buy-and-hold. The defensible claim is narrower — the framework can tell a
+cost artefact from a signal, and it reports when the signal is thin.
+
+**Threats to validity.** (i) two markets (BTC, ETH) and, for the selection study, two
+overlapping windows — still one exchange and one three-year sequence of regimes;
+(ii) the adopted configuration rests on 67 trades, one of which carries the entire profit, so
+its confidence interval is wide and no claim of significance is made; (iii) resampling 1h
+bars upward assumes a gap-free hourly history, which the data-quality report verifies for
+this sample but which would not hold through an exchange outage; (iv) single-seed synthetic
+tests only;
+(v) K-Means label non-determinism mitigated via scipy `kmeans2` seed + cluster-centre
+sorting; (vi) scikit-learn's KMeans was DLL-blocked by Windows Application Control on the
 dev machine, so the shipped code prefers sklearn and falls back to scipy with identical
 output.
 
@@ -295,9 +404,16 @@ We presented a research-grade, honest, end-to-end framework for systematic crypt
 implementing a full intermediate/advanced strategy set and demonstrating it on real
 data and in live paper trading. The contribution is validated infrastructure for cost-aware, causal
 evaluation — and a candid record that single-symbol retail timing strategies, once costs
-are included, do not simply work.
+are included, do not simply work. The selection study of Section 5.5 sharpens that record:
+bar size and exit rule dominated the published loss, and repairing them turned −33.9% into
++19.3% with a quarter of the drawdown, yet the repaired system still earns its profit from a
+single trade and does not reproduce that magnitude on a second asset. Infrastructure that
+separates these cases — and that refuses the better-looking but non-transferable
+configuration — is the result we claim.
 
-Future work: (1) ML return prediction (XGBoost/LSTM) feeding the portfolio ranker;
+Future work: (0) extend the selection sweep to walk-forward re-fitting across several
+assets and exchanges, until the headline figure rests on enough round trips to carry
+statistical weight; (1) ML return prediction (XGBoost/LSTM) feeding the portfolio ranker;
 (2) mean-variance/Hierarchical Risk Parity allocation in place of equal-weight;
 (3) multi-timeframe and multi-market (ETH, SOL, BTC-settled) validation; (4) testnet
 orders on Binance Spot Testnet with live execution journaling; (5) walk-forward /
@@ -332,5 +448,12 @@ pip install -r requirements.txt
 python main.py fetch --symbol BTC/USDT --timeframe 1h --days 180
 python scripts/compare_all.py --symbol BTC/USDT --timeframe 1h --days 180
 python main.py portfolio --source exchange --timeframe 1h --days 120
-python -m pytest          # 53 tests
+
+# Section 5.5 - selection sweep and the adopted configuration
+python main.py fetch --symbol BTC/USDT --timeframe 1h --days 1100
+python scripts/timeframe_sweep.py           # 384 runs -> reports/timeframe_sweep_BTCUSDT.csv
+python main.py backtest --days 1100         # adopted defaults: 4h, Kijun trail, no take-profit
+python main.py backtest --symbol ETH/USDT --days 1100   # cross-asset check
+
+python -m pytest          # 53 tests (the ADF test needs statsmodels installed)
 ```
