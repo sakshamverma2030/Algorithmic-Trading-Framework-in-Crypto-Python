@@ -1,0 +1,9 @@
+# Binary assets: never apply line-ending conversion (core.autocrlf=true would corrupt them
+# on checkout - git classified RESEARCH_PAPER.pdf as text and warned about exactly that).
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.pptx binary
+*.sqlite binary
+*.sqlite-wal binary
+*.sqlite-shm binary
