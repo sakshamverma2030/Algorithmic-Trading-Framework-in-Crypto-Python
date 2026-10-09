@@ -67,15 +67,74 @@ analytics → real-time paper/live trading.
 
 ## 3. Results (real Binance data)
 
-**Headline first.** Results are given in two states. *Original defaults* (1h bars, fixed
-4×ATR take-profit, no trailing stop) — Section 3.1 — leave every strategy in a loss.
-*Repaired defaults* (4h bars, no take-profit, Kijun trailing stop), selected out-of-sample in
-Section 3.2 — Section 3.3 — turn **two strategies positive** over three years (Ichimoku
-+19.3%, momentum +36.2%) and shrink every strategy's drawdown. Neither state beats
-buy-and-hold (+197.3%) over a tripling market, and the positive results are thin; their
-limits are stated in Section 3.2.
+**Headline first.** Section 3.1 is the current result: at the adopted defaults (4h bars, no
+take-profit, Kijun trailing stop, chosen out-of-sample in Section 3.3) momentum returns
+**+36.2%** and Ichimoku **+19.3%** over three years of BTC/USDT, with Ichimoku's drawdown at
+**−13.0%** against buy-and-hold's −53.5%. Section 3.2 keeps the earlier state of the same
+code (1h bars, fixed take-profit) where every strategy loses, because the gap between the two
+tables — same signals, same costs, different bar size and exit rule — is the project's main
+finding. Neither state beats buy-and-hold (+197.3%) over a tripling market, and Section 3.3
+states the limits of the positive results.
 
-### 3.1 Single-symbol event-driven, original defaults (BTC/USDT 1h, 180d, 2026-03 → 2026-09, $10k start)
+### 3.1 Single-symbol results at the adopted defaults (BTC/USDT 4h, 3 years)
+
+Primary result: every strategy through the same engine, costs and risk model at the adopted
+defaults of Section 3.3 (4h bars, no take-profit, Kijun trailing stop)
+(`python scripts/compare_all.py --symbol BTC/USDT --timeframe 4h --days 1100`;
+buy-and-hold +197.3% with a −53.5% drawdown):
+
+| Strategy | Final | Return | CAGR | Sharpe | MaxDD | Trades | Win% | PF |
+|---|---|---|---|---|---|---|---|---|
+| Momentum 20b | 13,623 | **+36.2%** | +10.8% | 0.94 | −20.6% | 248 | 28.2 | 1.36 |
+| Ichimoku 10/30/60/30 | 11,934 | **+19.3%** | +6.0% | 0.77 | **−13.0%** | 67 | 26.9 | 1.57 |
+| Aroon/RSI divergence | 9,031 | −9.7% | −3.3% | −1.42 | −9.9% | 108 | 36.1 | 0.48 |
+| Hurst + RSI | 7,547 | −24.5% | −8.9% | −2.10 | −26.4% | 307 | 33.2 | 0.54 |
+| Calendar anomalies | 1,916 | −80.8% | −42.2% | −4.42 | −82.1% | 1,839 | 32.5 | 0.58 |
+| Pairs (BTC×ETH, 60b, z=2) | 3,832 | −61.7% | −26.6% | −0.52 | −68.7% | 82 | 42.7 | 0.59 |
+
+Against Section 3.2 (the same strategies at the original defaults, 180-day 1h sample): momentum moves
+from −6.6% to +36.2% and Ichimoku from −3.6% to +19.3%, while the high-turnover strategies
+stay deeply negative — calendar anomalies trade 1,839 times in three years and pay their
+entire capital away in costs. Turnover and cost discipline, not signal sophistication,
+separate the two groups.
+
+Two caveats: the samples differ in length (180 days vs three years), so the comparison is
+directional rather than like-for-like; and momentum's +36.2% carries a −20.6% drawdown
+against Ichimoku's −13.0%, so risk-adjusted the two are closer than the headline returns
+suggest (Sharpe 0.94 vs 0.77).
+
+**Should momentum be the default?** Its +36.2% is the largest number in the table, so the
+same discipline was applied to it: a 72-configuration sweep (timeframe x lookback x entry
+threshold) with the 70/30 split, plus the ETH cross-check. The verdict is mixed and it was
+*not* promoted to the default.
+
+| | Ichimoku 4h | Momentum 4h |
+|---|---|---|
+| BTC full 3y | +19.3% | **+36.2%** |
+| BTC in-sample / out-of-sample | +9.5% / **+9.0%** | +28.1% / +6.4% |
+| BTC max drawdown | **−13.0%** | −20.6% |
+| BTC profit factor | **1.57** | 1.36 |
+| Best trade as share of profit | 100% | **65%** |
+| ETH in-sample / out-of-sample | +13.6% / −7.9% | +14.7% / −6.4% |
+| Median OOS return across its own grid | positive on 2h-1d | **negative on 1h-12h** |
+
+Momentum earns most of its three-year figure in the in-sample bull phase, carries half again
+the drawdown, and the median configuration of its own parameter grid loses out of sample on
+every timeframe except 1d - the opposite of the "robust region" criterion of Section 2.4. It is
+better than Ichimoku on exactly one axis, concentration: its profit survives the removal of
+its best trade (+1,255), while Ichimoku's does not. Both lose out of sample on ETH. Momentum
+is therefore selectable (`python main.py backtest --strategy momentum`) and reported, but
+Ichimoku - more balanced across halves, lower drawdown - remains the default.
+
+**Tooling note.** `scripts/compare_all.py` passed its argument list to `build_config()`
+instead of the parsed namespace, so `--symbol/--timeframe/--days` were silently ignored and
+every scorecard ran on the default window. Fixed; the table above is the first scorecard
+whose window matches its caption.
+
+### 3.2 The same strategies at the original defaults (BTC/USDT 1h, 180d, 2026-03 → 2026-09)
+The state the project shipped in before the selection study of Section 3.3: 1h bars, fixed
+4×ATR take-profit, no trailing stop. Kept for the comparison with Section 3.1.
+
 Buy & hold benchmark: period return **+8.95%**, final **10,880.95** (annual vol 39.3%, Sharpe 0.64).
 
 | Strategy | Final equity | Return | Sharpe | MaxDD | Trades | Win% | PF |
@@ -87,9 +146,9 @@ Buy & hold benchmark: period return **+8.95%**, final **10,880.95** (annual vol 
 | Hurst + RSI | 5,840.83 | -41.59% | -14.3 | -41.59% | 226 | 18.1% | 0.14 |
 | Calendar anomalies | 1,475.42 | -85.25% | -21.1 | -85.25% | 798 | 21.3% | 0.21 |
 
-### 3.2 Timeframe & exit-rule selection (3 years BTC/USDT, out-of-sample)
+### 3.3 Timeframe & exit-rule selection (3 years BTC/USDT, out-of-sample)
 
-Section 3.1 runs every strategy at its *original* defaults (1h bars, fixed 4×ATR
+Section 3.2 runs every strategy at its *original* defaults (1h bars, fixed 4×ATR
 take-profit, no trailing stop). To separate the strategy logic from those implementation
 choices, `scripts/timeframe_sweep.py` backtests **384 configurations** — timeframe ×
 Ichimoku preset × TK-cross window × exit rule × stop width — over three years of BTC/USDT
@@ -139,63 +198,9 @@ buy-and-hold, though the drawdown benefit transfers (−13.1% vs −68.0%). (iii
 (ATR) trail scored far better on BTC (+34.8%, PF 1.90) but **lost on ETH** (−3.4%), so it was
 rejected — picking it would have been curve fitting.
 
-### 3.3 Repaired defaults applied to the whole strategy set (BTC/USDT 4h, 3 years)
-
-The exit rule and bar size are not Ichimoku-specific — every strategy shares `risk.py`. The
-full scorecard on the repaired defaults
-(`python scripts/compare_all.py --symbol BTC/USDT --timeframe 4h --days 1100`;
-buy-and-hold +197.3% with a −53.5% drawdown):
-
-| Strategy | Final | Return | CAGR | Sharpe | MaxDD | Trades | Win% | PF |
-|---|---|---|---|---|---|---|---|---|
-| Momentum 20b | 13,623 | **+36.2%** | +10.8% | 0.94 | −20.6% | 248 | 28.2 | 1.36 |
-| Ichimoku 10/30/60/30 | 11,934 | **+19.3%** | +6.0% | 0.77 | **−13.0%** | 67 | 26.9 | 1.57 |
-| Aroon/RSI divergence | 9,031 | −9.7% | −3.3% | −1.42 | −9.9% | 108 | 36.1 | 0.48 |
-| Hurst + RSI | 7,547 | −24.5% | −8.9% | −2.10 | −26.4% | 307 | 33.2 | 0.54 |
-| Calendar anomalies | 1,916 | −80.8% | −42.2% | −4.42 | −82.1% | 1,839 | 32.5 | 0.58 |
-
-Against Section 3.1 (same strategies, original defaults, 180-day 1h sample): momentum moves
-from −6.6% to +36.2% and Ichimoku from −3.6% to +19.3%, while the high-turnover strategies
-stay deeply negative — calendar anomalies trade 1,839 times in three years and pay their
-entire capital away in costs. Turnover and cost discipline, not signal sophistication,
-separate the two groups.
-
-Two caveats: the samples differ in length (180 days vs three years), so the comparison is
-directional rather than like-for-like; and momentum's +36.2% carries a −20.6% drawdown
-against Ichimoku's −13.0%, so risk-adjusted the two are closer than the headline returns
-suggest (Sharpe 0.94 vs 0.77).
-
-**Should momentum be the default?** Its +36.2% is the largest number in the table, so the
-same discipline was applied to it: a 72-configuration sweep (timeframe x lookback x entry
-threshold) with the 70/30 split, plus the ETH cross-check. The verdict is mixed and it was
-*not* promoted to the default.
-
-| | Ichimoku 4h | Momentum 4h |
-|---|---|---|
-| BTC full 3y | +19.3% | **+36.2%** |
-| BTC in-sample / out-of-sample | +9.5% / **+9.0%** | +28.1% / +6.4% |
-| BTC max drawdown | **−13.0%** | −20.6% |
-| BTC profit factor | **1.57** | 1.36 |
-| Best trade as share of profit | 100% | **65%** |
-| ETH in-sample / out-of-sample | +13.6% / −7.9% | +14.7% / −6.4% |
-| Median OOS return across its own grid | positive on 2h-1d | **negative on 1h-12h** |
-
-Momentum earns most of its three-year figure in the in-sample bull phase, carries half again
-the drawdown, and the median configuration of its own parameter grid loses out of sample on
-every timeframe except 1d - the opposite of the "robust region" criterion of Section 2.4. It is
-better than Ichimoku on exactly one axis, concentration: its profit survives the removal of
-its best trade (+1,255), while Ichimoku's does not. Both lose out of sample on ETH. Momentum
-is therefore selectable (`python main.py backtest --strategy momentum`) and reported, but
-Ichimoku - more balanced across halves, lower drawdown - remains the default.
-
-**Tooling note.** `scripts/compare_all.py` passed its argument list to `build_config()`
-instead of the parsed namespace, so `--symbol/--timeframe/--days` were silently ignored and
-every scorecard ran on the default window. Fixed; the table above is the first scorecard
-whose window matches its caption.
-
 ### 3.4 Portfolio (K-Means + momentum-alpha, BTC/ETH/SOL/ADA/XRP/USDT, 120d)
 
-*Run at the original exit defaults, before the Section 3.2 change; it has not been re-run on
+*Run at the original exit defaults, before the Section 3.3 change; it has not been re-run on
 the repaired settings, so it is not directly comparable with Section 3.3.*
 - K-Means clusters real data, ranking each cluster by its characteristic mean-return/vol
   profile; the best-performing cluster's top-N names are held equal-weight (weights in CSV)
@@ -212,7 +217,7 @@ the repaired settings, so it is not directly comparable with Section 3.3.*
 
 ### 3.6 Honest limitations
 - **Sample negative at the original defaults.** 180-day single-symbol returns are negative
-  for every strategy in that window. Section 3.2 shows that for Ichimoku most of the loss
+  for every strategy in that window. Section 3.3 shows that for Ichimoku most of the loss
   came from the bar size and the take-profit rather than the signal, but the repaired
   configuration still is not a proven edge: its three-year profit sits in one trade and does
   not transfer in magnitude to ETH.
@@ -233,7 +238,7 @@ the repaired settings, so it is not directly comparable with Section 3.3.*
 ```bash
 pip install -r requirements.txt
 python main.py fetch --symbol BTC/USDT --timeframe 1h --days 180
-# Section 3.1 figures predate the Section 3.2 change: to reproduce them, restore the original
+# Section 3.2 figures predate the Section 3.3 change: to reproduce them, restore the original
 # exits per strategy, e.g.
 #   python main.py backtest --timeframe 1h --days 180 --preset crypto --take-profit --trailing none
 python scripts/compare_all.py --symbol BTC/USDT --timeframe 1h --days 180
@@ -243,7 +248,7 @@ python main.py pairs --symbol BTC/USDT --pair ETH/USDT
 python main.py live --feed replay --source exchange --replay-bars 2500 --speed 0.01
 python main.py live --feed ccxtpro --symbol BTC/USDT --timeframe 1m
 
-# Section 3.2 — selection sweep and the adopted configuration
+# Section 3.3 — selection sweep and the adopted configuration
 python main.py fetch --symbol BTC/USDT --timeframe 1h --days 1100
 python scripts/timeframe_sweep.py          # 384 runs → reports/timeframe_sweep_BTCUSDT.csv
 python main.py backtest --days 1100        # adopted defaults (4h, Kijun trail, no TP)
