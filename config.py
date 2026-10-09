@@ -206,7 +206,9 @@ ICHIMOKU_PRESETS: dict[str, IchimokuParams] = {
 class StrategyConfig:
     """Signal-generation parameters for the Ichimoku strategy."""
 
-    params: IchimokuParams = field(default_factory=lambda: ICHIMOKU_PRESETS["standard"])
+    # Defaults below come from the timeframe/settings sweep in scripts/timeframe_sweep.py
+    # (3 years of BTC/USDT, in-sample vs out-of-sample). See README section "Choosing the timeframe".
+    params: IchimokuParams = field(default_factory=lambda: ICHIMOKU_PRESETS["crypto"])
     # Dynamic mode: switch between presets by volatility regime (see indicators.AdaptiveIchimoku).
     dynamic: bool = False
     regime_presets: tuple[str, str, str] = ("standard", "crypto", "crypto_slow")  # low / normal / high vol
@@ -215,7 +217,7 @@ class StrategyConfig:
     regime_high_quantile: float = 0.67
     atr_period: int = 14
     allow_short: bool = False           # spot markets are long-only; enable for perps/margin
-    cross_lookback: int = 1             # bars a TK cross stays "fresh" (1 = cross on the signal bar)
+    cross_lookback: int = 3             # bars a TK cross stays "fresh" (1 = cross on the signal bar)
     require_chikou: bool = True         # Chikou confirmation: Close_t vs Close_{t-displacement}
     require_kumo_twist: bool = False    # optional filter: future (leading) cloud has the trade's colour
 
@@ -508,8 +510,11 @@ class RiskConfig:
     cloud_buffer_atr: float = 0.5         # buffer beyond the Kumo boundary for cloud stops
     cloud_max_stop_atr: float = 5.0       # cap on the cloud-stop distance, in ATRs
     reward_risk_ratio: float = 2.0        # take-profit multiple of the initial risk for cloud stops
-    use_take_profit: bool = True
-    trailing_method: TrailingMethod = TrailingMethod.NONE
+    # A fixed take-profit caps the few large winners that pay for a trend system's many small
+    # losers, so it is off by default: exits ride the Kijun-sen trailing stop instead. Across the
+    # sweep this single change moved the median out-of-sample return from -1.2 % to +2.9 %.
+    use_take_profit: bool = False
+    trailing_method: TrailingMethod = TrailingMethod.KIJUN
     trailing_atr_multiplier: float = 3.0
     max_drawdown_limit: float = 0.20      # circuit breaker: flatten + halt at a 20 % drawdown
     circuit_breaker_cooldown_bars: int = 168
@@ -568,7 +573,8 @@ class ExchangeConfig:
 @dataclass(frozen=True)
 class DataConfig:
     symbol: str = field(default_factory=lambda: _env_str("SYMBOL", "BTC/USDT"))
-    timeframe: str = field(default_factory=lambda: _env_str("TIMEFRAME", "1h"))
+    # 4h: hourly bars lose to fees and whipsaw (median OOS return -3.4 % vs +3.9 % on 4h).
+    timeframe: str = field(default_factory=lambda: _env_str("TIMEFRAME", "4h"))
     history_days: int = 365
     source: DataSource = DataSource.EXCHANGE
     csv_path: Path | None = None

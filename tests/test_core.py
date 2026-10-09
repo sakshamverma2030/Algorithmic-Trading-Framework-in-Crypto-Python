@@ -304,7 +304,7 @@ def test_live_replay_reproduces_the_event_driven_backtest(tmp_path):
     """Research/production parity: same bars in, same trades out (timing, side, exit reason)."""
     data = SyntheticDataGenerator(seed=11).generate(1000, "1h", start=pd.Timestamp("2025-06-01", tz="UTC"))
     cfg = AppConfig(
-        data=DataConfig(source=DataSource.SYNTHETIC),
+        data=DataConfig(source=DataSource.SYNTHETIC, timeframe="1h"),  # the fixture below generates 1h bars
         strategy=StrategyConfig(allow_short=True, cross_lookback=3),  # paper mode may short
         risk=RiskConfig(max_drawdown_limit=0.0, daily_loss_limit=0.0),
         live=LiveConfig(feed=FeedType.REPLAY, heartbeat_sec=60, journal_db_path=tmp_path / "journal.sqlite"),

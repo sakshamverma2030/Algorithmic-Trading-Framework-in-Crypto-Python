@@ -1,0 +1,84 @@
+{
+  "name": "Ichimoku 10/30/60/30",
+  "period": {
+    "symbol": "BTC/USDT",
+    "timeframe": "4h",
+    "start": "2023-10-05 08:00:00+00:00",
+    "end": "2026-10-09 00:00:00+00:00",
+    "days": 1099.6666666666667,
+    "bars": 6599,
+    "engine": "event-driven"
+  },
+  "strategy": {
+    "final_equity": 11934.46942817716,
+    "total_return": 0.19344694281771613,
+    "cagr": 0.0604553693281602,
+    "volatility": 0.08088803545895042,
+    "sharpe": 0.7657088883031092,
+    "sortino": 1.3128311144955098,
+    "calmar": 0.4657999237379967,
+    "max_drawdown": -0.12978827656950231,
+    "max_dd_duration": "403 days 00:00:00",
+    "psr": 0.9190372252588345,
+    "skew": 6.740157723098606,
+    "kurtosis": 196.64026660656083,
+    "var_95": 0.001008551739328021,
+    "cvar_95": 0.0035455878652688325,
+    "exposure": 0.13259584785573572
+  },
+  "benchmark": {
+    "final_equity": 29691.089258766602,
+    "total_return": 1.972973791806008,
+    "cagr": 0.4356910674076706,
+    "volatility": 0.45866173989637943,
+    "sharpe": 1.0176766279828537,
+    "sortino": 1.4636572650981308,
+    "calmar": 0.8151772576834945,
+    "max_drawdown": -0.5344740218167796,
+    "max_dd_duration": "367 days 08:00:00",
+    "psr": 0.9613668163471562,
+    "skew": 0.06441139595115317,
+    "kurtosis": 6.471801166405891,
+    "var_95": 0.015095362138515955,
+    "cvar_95": 0.023467509705614273,
+    "exposure": 1.0
+  },
+  "relative": {
+    "alpha": 0.03451579897080641,
+    "beta": 0.05874612320930203,
+    "correlation": 0.3331098218724759,
+    "information_ratio": -0.9234273418027893,
+    "tracking_error": 0.43840227249915925
+  },
+  "trades": {
+    "total_trades": 67,
+    "long_trades": 67,
+    "short_trades": 0,
+    "win_rate": 0.26865671641791045,
+    "profit_factor": 1.5687706606656866,
+    "avg_win_pct": 0.05859872713153321,
+    "avg_loss_pct": -0.016236149937411692,
+    "payoff_ratio": 3.609151637390878,
+    "expectancy": 28.872678032494985,
+    "expectancy_pct": 0.0038687424094690313,
+    "avg_r_multiple": 0.3014489125224544,
+    "largest_win": 1936.8930687285483,
+    "largest_loss": -138.7835957657022,
+    "avg_trade_duration": "2 days 04:14:19.701000",
+    "median_trade_duration": "0 days 20:00:00",
+    "avg_bars_held": 14.059701492537313,
+    "max_consecutive_losses": 6,
+    "exit_reasons": {
+      "trailing_stop": 58,
+      "stop_loss": 7,
+      "signal": 2
+    }
+  },
+  "costs": {
+    "total_fees": 616.5394264073441,
+    "total_slippage": 200.82967179599268,
+    "total_financing": 0.0,
+    "skipped_entries": 0,
+    "breaker_trips": 0
+  }
+}

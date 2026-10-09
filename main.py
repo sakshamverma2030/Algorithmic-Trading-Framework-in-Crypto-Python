@@ -111,6 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--csv-path", type=Path, help="OHLCV CSV file for --source csv")
     g.add_argument("--exchange", help="CCXT exchange id (default: EXCHANGE_ID or binance)")
     g.add_argument("--seed", type=int, help="random seed of the synthetic generator")
+    g.add_argument("--no-refresh", action="store_true",
+                   help="use the cached SQLite history only; skip the exchange download")
 
     s = common.add_argument_group("strategy")
     s.add_argument("--preset", choices=[*ICHIMOKU_PRESETS, "dynamic"], help="Ichimoku parameter preset")
@@ -136,7 +138,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--risk-per-trade", type=float, help="equity fraction risked per trade, e.g. 0.01")
     r.add_argument("--stop", choices=[m.value for m in StopMethod], help="stop-loss method")
     r.add_argument("--trailing", choices=[m.value for m in TrailingMethod], help="trailing-stop method")
-    r.add_argument("--no-take-profit", action="store_true")
+    r.add_argument("--no-take-profit", action="store_true", help="exit on signals / trailing stop only (default)")
+    r.add_argument("--take-profit", action="store_true", help="re-enable the fixed ATR take-profit target")
     r.add_argument("--max-dd", type=float, help="circuit-breaker drawdown limit, e.g. 0.2")
     r.add_argument("--fee", type=float, help="maker and taker fee, e.g. 0.001 = 0.1%%")
     r.add_argument("--slippage-bps", type=float, help="fixed slippage in basis points")
@@ -287,6 +290,8 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         risk = replace(risk, trailing_method=TrailingMethod(opt("trailing")))
     if opt("no_take_profit"):
         risk = replace(risk, use_take_profit=False)
+    if opt("take_profit"):
+        risk = replace(risk, use_take_profit=True)
     if opt("max_dd") is not None:
         risk = replace(risk, max_drawdown_limit=opt("max_dd"))
 
@@ -368,10 +373,12 @@ def banner(text: str) -> None:
 class TradingBotCLI:
     """Runs each stage of the pipeline and keeps the loaded dataset between menu actions."""
 
-    def __init__(self, cfg: AppConfig, plots: bool = True, show: bool = False) -> None:
+    def __init__(self, cfg: AppConfig, plots: bool = True, show: bool = False,
+                 refresh: bool = True) -> None:
         self.cfg = cfg
         self.plots = plots
         self.show = show
+        self.refresh = refresh  # False = work from the SQLite cache, no network
         self.analyzer = PerformanceAnalyzer()
         self._data: pd.DataFrame | None = None
         self._data_key: tuple[Any, ...] | None = None
@@ -397,11 +404,11 @@ class TradingBotCLI:
         return ChartVisualizer(self.report_dir, show=self.show)
 
     # ------------------------------------------------------------------ stages
-    def fetch(self, refresh: bool = True) -> pd.DataFrame:
+    def fetch(self, refresh: bool | None = None) -> pd.DataFrame:
         d = self.cfg.data
         banner(f"DATA: {d.symbol} {d.timeframe} | {d.history_days} days | source={d.source.value}")
         loader = DataLoader(self.cfg)
-        df = loader.load(refresh=refresh)
+        df = loader.load(refresh=self.refresh if refresh is None else refresh)
         self._data, self._data_key = df, self._dataset_key()
         print(f" {len(df):,} bars from {df.index[0]:%Y-%m-%d %H:%M} to {df.index[-1]:%Y-%m-%d %H:%M} UTC")
         print(f" last close {df['close'].iloc[-1]:,.2f} | period return "
@@ -650,7 +657,8 @@ class TradingBotCLI:
             return
         # The pipeline never places real orders, whatever TRADING_MODE says.
         paper_cfg = replace(self.cfg, live=replace(self.cfg.live, mode=TradingMode.PAPER_TRADING))
-        TradingBotCLI(paper_cfg, self.plots, self.show)._with_data(self._data, self._data_key).live()
+        TradingBotCLI(paper_cfg, self.plots, self.show, self.refresh)._with_data(
+            self._data, self._data_key).live()
 
     def _with_data(self, df: pd.DataFrame | None, key: tuple[Any, ...] | None) -> TradingBotCLI:
         self._data, self._data_key = df, key
@@ -797,7 +805,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
 
-    app = TradingBotCLI(cfg, plots=not args.no_plots, show=args.show)
+    app = TradingBotCLI(cfg, plots=not args.no_plots, show=args.show, refresh=not args.no_refresh)
     try:
         if args.command == "menu":
             app.menu()

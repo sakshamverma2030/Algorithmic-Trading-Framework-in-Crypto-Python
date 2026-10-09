@@ -52,6 +52,7 @@ Data fetch (CCXT / SQLite) -> Signals (Ichimoku + overlays + ML strategies) -> B
 | `tests/test_extra_strategies.py` | RSI divergence overlay, K-Means regime labels (causality + bounds), momentum strategy (causality, trend behaviour, live selection) and cointegrated-pairs behaviour on synthetic data. |
 | `tests/test_resume_strategies.py` | Strategy behaviour tests: Aroon bounds/monotonicity, Hurst trend-vs-revert separation, rolling-Hurst causality, ADF stationarity detection, Bollinger geometry, calendar bucket causality, divergence signal completeness + require/relax modes, Hurst strategy runs clean, K-Means clusters assets on features, momentum-alpha portfolio rebalances into top-N and rejects empty universes (14 tests). |
 | `scripts/compare_all.py` | Cross-strategy scorecard: runs every single-symbol strategy on one dataset through the event-driven engine, writes `strategy_comparison.csv` + a normalised equity chart into `reports/<SYMBOL>_<TF>_<source>/`. |
+| `scripts/timeframe_sweep.py` | Timeframe/settings selection sweep: 384 backtests (timeframe x preset x cross window x exit style x stop width) with in-sample/out-of-sample split; writes `reports/timeframe_sweep_<SYMBOL>.csv` and prints the robust candidates. This is the evidence behind the defaults in `config.py` (section 6.1). |
 | `scripts/paper_to_pdf.py` | Renders `RESEARCH_PAPER.md` → `RESEARCH_PAPER.pdf` (markdown → HTML → xhtml2pdf) with inline styling. |
 | `requirements.txt` | Core deps (numpy, pandas, scipy, matplotlib, ccxt, pytest) + ML stack (`scikit-learn` K-Means, `statsmodels` ADF); optional TA-Lib / pyarrow commented. |
 
@@ -124,7 +125,7 @@ using one.
 ```bash
 python main.py                                         # interactive menu
 python main.py pipeline --source synthetic             # full pipeline offline, no exchange needed
-python main.py pipeline                                # same on real Binance BTC/USDT 1h data
+python main.py pipeline                                # same on real Binance BTC/USDT 4h data
 python main.py fetch --symbol ETH/USDT --timeframe 15m --days 180
 python main.py backtest --preset crypto --sizing kelly --stop cloud --trailing kijun
 python main.py compare                                 # standard vs crypto vs crypto_slow vs dynamic
@@ -192,9 +193,9 @@ stops, and so do the stop-losses, because stops are managed by the bot rather th
 exchange. For long unattended runs, use a cloud server (VPS). Stop with `Ctrl+C`; add
 `--flatten-on-exit` to close any open position on shutdown.
 
-Signals use closed candles, so with 1h candles the first decision arrives when the current hour
-closes. For a quicker demo use `--timeframe 5m` or `15m`, keeping in mind that the timeframe
-changes the strategy's behaviour.
+Signals use closed candles, so on the default 4h timeframe the first decision arrives when the
+current 4-hour candle closes. For a quicker demo use `--timeframe 5m` or `15m`, keeping in mind
+that the timeframe changes the strategy's behaviour (see section 6.1).
 
 ### 4.3 Paper trading (no account)
 
@@ -293,6 +294,105 @@ whipsaws). **`dynamic`** classifies each bar by the rolling percentile of NATR =
 low volatility uses fast lines, normal uses crypto lines, high volatility uses slow lines.
 TK "crosses" caused purely by a regime switch are ignored.
 
+### 6.1 Choosing the timeframe and settings
+
+The defaults in `config.py` are not hand-picked. They come from `scripts/timeframe_sweep.py`,
+which backtests **384 combinations** of timeframe x preset x TK-cross window x exit style x stop
+width on three years of real BTC/USDT data (Oct 2023 - Oct 2026: a +197 % bull run followed by a
+-20 % drawdown). Every run is split into in-sample (first 70 %) and out-of-sample (last 30 %), and
+the whole sweep was repeated on an independent two-year window as a cross-check.
+
+Two findings dominate everything else.
+
+**1. A fixed take-profit was the main leak.** A trend system pays for many small losers with a few
+large winners; capping winners at 4 x ATR while losers run to the stop inverts that maths.
+
+| Exit style | Median out-of-sample return |
+|---|---|
+| no take-profit + Kijun trailing stop | **+2.9 %** |
+| no take-profit + ATR (Chandelier) trailing | 0.0 % |
+| take-profit + Kijun trailing | 0.0 % |
+| take-profit, no trailing (the old default) | -1.2 % |
+
+**2. Hourly candles lose to costs and whipsaw.** With the exit style above:
+
+| Timeframe | Median trades (3y) | Median OOS return | Median OOS Sharpe | Median OOS drawdown |
+|---|---|---|---|---|
+| 1h | 224 | -3.4 % | -0.24 | -14.5 % |
+| **4h** | **52** | **+3.9 %** | **0.77** | **-4.3 %** |
+| 2h | 101 | +8.8 % | 1.42 | -5.3 % |
+| 6h | 40 | -1.9 % | -0.63 | -3.5 % |
+| 12h | 15 | +3.8 % | 1.41 | -1.5 % |
+| 1d | 9 | +1.4 % | 0.95 | -1.1 % |
+
+2h scored highest, but 4h + the `crypto` preset was the only combination that stayed **positive in
+all four segments** (both halves of both data windows) with a usable number of trades, so that is
+the default. 12h and 1d look fine but trade 9-15 times in three years, which is too small a sample
+to trust.
+
+**What changed**
+
+| Setting | Before | Now |
+|---|---|---|
+| Timeframe | 1h | **4h** |
+| Preset | standard 9/26/52/26 | **crypto 10/30/60/30** |
+| TK-cross window | 1 bar | **3 bars** |
+| Take-profit | on (4 x ATR) | **off** |
+| Trailing stop | none | **Kijun-sen** |
+
+**Result on three years of real BTC/USDT 4h data** (`python main.py backtest --days 1100`):
+
+| | Strategy | Buy & hold |
+|---|---|---|
+| Total return | +19.3 % | +197.3 % |
+| Max drawdown | **-13.0 %** | -53.5 % |
+| Sharpe / Sortino | 0.77 / 1.31 | 1.02 / 1.46 |
+| Profit factor | 1.57 | - |
+| Trades / win rate | 67 / 26.9 % | - |
+| Time in market | 13.3 % | 100 % |
+| Annualised alpha | +3.5 % | - |
+
+Year by year, strategy vs buy & hold: 2023 (Oct-Dec) -3.0 % vs +53.2 %; 2024 +14.9 % vs +121.1 %;
+2025 -5.0 % vs -6.6 %; 2026 (Jan-Oct) **+12.7 % vs -6.4 %**.
+
+**Old vs new defaults on exactly the same three years of BTC/USDT:**
+
+| | Old (1h, standard, take-profit, no trailing) | New (4h, crypto, Kijun trailing, no take-profit) |
+|---|---|---|
+| Total return | **-33.9 %** | **+19.3 %** |
+| In-sample / out-of-sample | -17.8 % / -19.6 % | +9.5 % / +9.0 % |
+| Max drawdown | -37.2 % | -13.0 % |
+| Trades | 240 | 67 |
+
+**The profit is concentrated in very few trades - say this out loud in any report.** Of 67 trades,
+18 win and 49 lose, and the median trade is -46 USD. Total net profit is 1,934 USD, while the single
+best trade (17-26 Aug 2026, BTC 64.2k -> 78.4k) made 1,937 USD. **Remove that one trade and the
+three years are flat (-2 USD); remove the best three and they are negative (-1,432 USD).** A long
+right tail is how trend following is supposed to work, but with only 67 trades it also means the
+headline number is not statistically reliable.
+
+**Cross-asset check, and why the default is Kijun and not the higher-scoring ATR trail.** On three
+years of BTC/USDT 4h, a Chandelier (ATR) trailing stop looks clearly better than the Kijun trail:
++34.8 % vs +19.3 %, profit factor 1.90 vs 1.57, and much less concentration (the best trade is 53 %
+of the profit instead of 100 %). On ETH/USDT over the same three years it flips: the ATR trail loses
+(-3.4 %, profit factor 0.90) while the Kijun trail is slightly positive (+4.6 %, profit factor 1.16,
+max drawdown -13.1 % vs -68.0 % for buy-and-hold). One asset is not evidence, so the default stays
+with the exit that is positive on both and best by median across all 384 runs. The honest reading is
+that the edge is small and BTC-heavy: on ETH the profit is even more concentrated (the best trade is
+about twice the total profit).
+
+**Read this honestly.** A long-only trend filter cannot beat a market that triples - it is in the
+market only 13 % of the time. What it does is lose far less when the trend turns: a quarter of
+buy & hold's drawdown, and a positive 2026 while BTC fell. Judge it on drawdown and
+risk-adjusted return, not on the headline number. The previous default (1h, take-profit, no
+trailing) lost money on the same data, which is what the sweep was built to detect.
+
+Re-run the selection yourself (writes `reports/timeframe_sweep_BTCUSDT.csv`):
+
+```bash
+python scripts/timeframe_sweep.py
+```
+
 ## 7. Backtesting
 
 * **Vectorised:** `r_strat = position.shift(1) * r - |Δposition| * c`. Full notional, proportional
@@ -386,14 +486,18 @@ The **53 tests** are split across three files:
   live) holds 57 round-trip trades/116 fills and is committed at
   `data/trade_journal_snapshot.sqlite`. Real mainnet orders have not been run; only testnet funds
   should be used until the strategy itself is proven.
-* **Backtest results on real data are currently negative.** As of the last verified runs, the
-  long-only preset variants lost money on BTC/USDT 1h and ETH/USDT 1h (profit factors 0.4-0.7) and
-  barely traded on BTC 1d, in a period where buy-and-hold rose. The in-sample parameter optimiser
-  winner overfits (IS Sharpe ~0.49 collapses to OOS ~-2.7). Pairs trading lost too in its longer
-  310-day window, and the K-Means + momentum-alpha portfolio underperformed a BTC buy-and-hold
-  (−15.6% on BTC/ETH/SOL/ADA/XRP 120d, while still beating ADA/XRP). Treat the system as validated
-  plumbing with an unvalidated strategy; forward-test in
-  paper/demo before any real funds.
+* **Backtest results on real data, after the timeframe selection (section 6.1).** The default
+  Ichimoku configuration (4h, crypto preset, Kijun trailing stop, no take-profit) returns +19.3 %
+  over three years of BTC/USDT with a -13.0 % max drawdown and profit factor 1.57, versus +197.3 %
+  and -53.5 % for buy-and-hold: lower return, a quarter of the drawdown, and positive in the 2026
+  downtrend (+12.7 % while BTC fell 6.4 %). It does **not** beat buy-and-hold over a bull market and
+  is not meant to. The earlier defaults (1h, fixed take-profit, no trailing stop) lost money on
+  BTC/USDT and ETH/USDT, which is what `scripts/timeframe_sweep.py` was written to detect; the
+  in-sample parameter optimiser still overfits badly (IS Sharpe ~0.49 -> OOS ~-2.7), which is why
+  settings are chosen on out-of-sample behaviour. The other strategies remain unvalidated: pairs
+  trading lost over its 310-day window, and the K-Means + momentum-alpha portfolio underperformed a
+  BTC buy-and-hold (-15.6 % on BTC/ETH/SOL/ADA/XRP over 120 days). Forward-test in paper/demo before
+  any real funds.
 * Documentation: `CAPSTONE.md` (capstone report), `CAPSTONE_ABSTRACT.md` (abstract + slide outline),
   `RESEARCH_PAPER.md`/`.pdf` (IEEE-style paper with real results).
 * Synthetic data exists to test the software. Judge the strategy only on real exchange data,
