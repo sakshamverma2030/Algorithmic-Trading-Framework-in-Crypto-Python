@@ -29,7 +29,7 @@ from intermediate_strategies import CalendarAnomalyStrategy, AroonRsiDivergenceS
 from advanced_ml_strategies import HurstTrendStrategy
 from backtester import EventDrivenBacktester
 from analytics import PerformanceAnalyzer
-from main import build_config
+from main import build_config, parse_args
 
 
 def main() -> None:
@@ -39,9 +39,11 @@ def main() -> None:
     p.add_argument("--days", type=int, default=180)
     args = p.parse_args()
 
-    cfg: AppConfig = build_config(["backtest", "--source", "exchange", "--symbol", args.symbol,
-                                   "--timeframe", args.timeframe, "--days", str(args.days),
-                                   "--no-plots"])
+    # build_config expects parsed arguments; passing the raw list silently dropped every
+    # override (getattr on a list returns None), so --symbol/--timeframe/--days were ignored.
+    cfg: AppConfig = build_config(parse_args(
+        ["backtest", "--source", "exchange", "--symbol", args.symbol,
+         "--timeframe", args.timeframe, "--days", str(args.days), "--no-plots"]))
     df = DataLoader(cfg).load(refresh=False)
     if df.empty:
         print(f"no data for {args.symbol} {args.timeframe}; run fetch first")

@@ -65,6 +65,14 @@ analytics → real-time paper/live trading.
 
 ## 3. Results (real Binance data)
 
+**Headline first.** Results are given in two states. *Original defaults* (1h bars, fixed
+4×ATR take-profit, no trailing stop) — Section 3.1 — leave every strategy in a loss.
+*Repaired defaults* (4h bars, no take-profit, Kijun trailing stop), selected out-of-sample in
+Section 3.2 — Section 3.3 — turn **two strategies positive** over three years (Ichimoku
++19.3%, momentum +36.2%) and shrink every strategy's drawdown. Neither state beats
+buy-and-hold (+197.3%) over a tripling market, and the positive results are thin; their
+limits are stated in Section 3.2.
+
 ### 3.1 Single-symbol event-driven, original defaults (BTC/USDT 1h, 180d, 2026-03 → 2026-09, $10k start)
 Buy & hold benchmark: period return **+8.95%**, final **10,880.95** (annual vol 39.3%, Sharpe 0.64).
 
@@ -129,7 +137,38 @@ buy-and-hold, though the drawdown benefit transfers (−13.1% vs −68.0%). (iii
 (ATR) trail scored far better on BTC (+34.8%, PF 1.90) but **lost on ETH** (−3.4%), so it was
 rejected — picking it would have been curve fitting.
 
-### 3.3 Portfolio (K-Means + momentum-alpha, BTC/ETH/SOL/ADA/XRP/USDT, 120d)
+### 3.3 Repaired defaults applied to the whole strategy set (BTC/USDT 4h, 3 years)
+
+The exit rule and bar size are not Ichimoku-specific — every strategy shares `risk.py`. The
+full scorecard on the repaired defaults
+(`python scripts/compare_all.py --symbol BTC/USDT --timeframe 4h --days 1100`;
+buy-and-hold +197.3% with a −53.5% drawdown):
+
+| Strategy | Final | Return | CAGR | Sharpe | MaxDD | Trades | Win% | PF |
+|---|---|---|---|---|---|---|---|---|
+| Momentum 20b | 13,623 | **+36.2%** | +10.8% | 0.94 | −20.6% | 248 | 28.2 | 1.36 |
+| Ichimoku 10/30/60/30 | 11,934 | **+19.3%** | +6.0% | 0.77 | **−13.0%** | 67 | 26.9 | 1.57 |
+| Aroon/RSI divergence | 9,031 | −9.7% | −3.3% | −1.42 | −9.9% | 108 | 36.1 | 0.48 |
+| Hurst + RSI | 7,547 | −24.5% | −8.9% | −2.10 | −26.4% | 307 | 33.2 | 0.54 |
+| Calendar anomalies | 1,916 | −80.8% | −42.2% | −4.42 | −82.1% | 1,839 | 32.5 | 0.58 |
+
+Against Section 3.1 (same strategies, original defaults, 180-day 1h sample): momentum moves
+from −6.6% to +36.2% and Ichimoku from −3.6% to +19.3%, while the high-turnover strategies
+stay deeply negative — calendar anomalies trade 1,839 times in three years and pay their
+entire capital away in costs. Turnover and cost discipline, not signal sophistication,
+separate the two groups.
+
+Two caveats: the samples differ in length (180 days vs three years), so the comparison is
+directional rather than like-for-like; and momentum's +36.2% carries a −20.6% drawdown
+against Ichimoku's −13.0%, so risk-adjusted the two are closer than the headline returns
+suggest (Sharpe 0.94 vs 0.77).
+
+**Tooling note.** `scripts/compare_all.py` passed its argument list to `build_config()`
+instead of the parsed namespace, so `--symbol/--timeframe/--days` were silently ignored and
+every scorecard ran on the default window. Fixed; the table above is the first scorecard
+whose window matches its caption.
+
+### 3.4 Portfolio (K-Means + momentum-alpha, BTC/ETH/SOL/ADA/XRP/USDT, 120d)
 - K-Means clusters real data, ranking each cluster by its characteristic mean-return/vol
   profile; the best-performing cluster's top-N names are held equal-weight (weights in CSV)
   across 348 rebalances.
@@ -138,12 +177,12 @@ rejected — picking it would have been curve fitting.
   7,800.60, XRP 9,255.46). (A draft "+3.4% beat buy-and-hold" figure was traced to a
   benchmark bug that compared against ADA/USDT; corrected.)
 
-### 3.4 Live/paper demo
+### 3.5 Live/paper demo
 - Replay 2,500 BTC/USDT 1h bars: paper engine ENTER/EXIT with ATR stops, 2bp slippage,
   net PnL per trade, SQLite journal (`fills`/`trades`/`equity`/`events`).
 - Live ccxt.pro WebSocket paper: heartbeat lag ~15ms, feed_age 0s, live price streaming.
 
-### 3.5 Honest limitations
+### 3.6 Honest limitations
 - **Sample negative at the original defaults.** 180-day single-symbol returns are negative
   for every strategy in that window. Section 3.2 shows that for Ichimoku most of the loss
   came from the bar size and the take-profit rather than the signal, but the repaired

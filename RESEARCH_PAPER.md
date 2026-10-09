@@ -213,6 +213,15 @@ OOS ~-2.7).
 
 ## 5. Results
 
+**Headline.** Results are reported in two states, because the difference between them is the
+paper's main empirical point. *Original defaults* (1h bars, fixed 4xATR take-profit, no
+trailing stop) are in Section 5.1: every single-symbol strategy loses money. *Repaired
+defaults* (4h bars, no take-profit, Kijun-sen trailing stop), selected out-of-sample in
+Section 5.5, are in Section 5.6: over three years of BTC/USDT two of the five strategies turn
+positive (Ichimoku +19.3%, momentum +36.2%) and every strategy's drawdown shrinks. Neither
+state beats buy-and-hold over a tripling market (+197.3%), and the positive results remain
+thin, so Section 5.5 also reports their limits.
+
 All results are event-driven, with costs (0.1% fee + 1 bp half-spread + 2 bps slippage =
 ~0.1%/side through the cost model) and $10,000 initial capital.
 
@@ -356,6 +365,39 @@ control and positive performance when the trend turns.
    better on BTC (+34.8%, profit factor 1.90, best trade only 53% of profit) but loses on
    ETH (−3.4%, profit factor 0.90). Under the protocol of Section 4 it was not adopted,
    which is precisely the discipline the sweep exists to enforce.
+
+---
+
+### 5.6 The same repair applied to the whole strategy set
+
+The exit rule and bar size of Section 5.5 are not Ichimoku-specific: every strategy in this
+framework shares `risk.py`. Re-running the full scorecard on the repaired defaults over three
+years of BTC/USDT 4h (`python scripts/compare_all.py --symbol BTC/USDT --timeframe 4h
+--days 1100`; buy-and-hold +197.3%, maximum drawdown −53.5%):
+
+| Strategy | Final | Return | CAGR | Sharpe | MaxDD | Trades | Win% | PF |
+|---|---|---|---|---|---|---|---|---|
+| S2 Momentum 20b | 13,623 | **+36.2%** | +10.8% | 0.94 | −20.6% | 248 | 28.2 | 1.36 |
+| S1 Ichimoku 10/30/60/30 | 11,934 | **+19.3%** | +6.0% | 0.77 | **−13.0%** | 67 | 26.9 | 1.57 |
+| S4 Aroon/RSI divergence | 9,031 | −9.7% | −3.3% | −1.42 | −9.9% | 108 | 36.1 | 0.48 |
+| S6 Hurst + RSI | 7,547 | −24.5% | −8.9% | −2.10 | −26.4% | 307 | 33.2 | 0.54 |
+| S3 Calendar anomalies | 1,916 | −80.8% | −42.2% | −4.42 | −82.1% | 1,839 | 32.5 | 0.58 |
+
+Compared with Section 5.1 (same strategies, original defaults, 180-day 1h sample), momentum
+moves from −6.6% to +36.2% and Ichimoku from −3.6% to +19.3%, while the two high-turnover
+strategies stay deeply negative: calendar anomalies trade 1,839 times in three years and pay
+their entire capital away in costs. Turnover, not signal sophistication, separates the two
+groups — and the ordering is the same conclusion the sweep reached for timeframes.
+
+Two caveats carry over. The samples are different lengths (180 days versus three years), so
+the comparison is directional rather than like-for-like; and momentum's +36.2% comes with a
+−20.6% drawdown, well above Ichimoku's −13.0%, so on risk-adjusted terms the two are closer
+than the headline returns suggest (Sharpe 0.94 versus 0.77).
+
+**Tooling note.** `scripts/compare_all.py` passed its argument list to `build_config()`
+instead of the parsed namespace, so `--symbol/--timeframe/--days` were silently discarded and
+every scorecard ran on the default window. The bug is fixed; the table above is the first
+scorecard whose window matches its caption.
 
 ---
 
