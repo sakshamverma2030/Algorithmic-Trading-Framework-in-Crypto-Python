@@ -14,7 +14,9 @@ analytics → real-time paper/live trading.
 - Retail crypto markets are full of high-frequency noise, fat tails and fees/slippage;
   naive Ichimoku/momentum signals alone do not provide a consistent edge.
 - Research question: within *event-driven backtesting + realistic cost/risk modelling*, can
-  a multi-signal ensemble of indicator/ML strategies form a workable trading pipeline?
+  a multi-signal ensemble of indicator/ML strategies form a workable trading pipeline — and
+  how much of a strategy's apparent loss is the signal itself versus implementation choices
+  (bar size, exit rule, turnover) that are rarely reported?
 - Deliverable: a repeatable pipeline (data → signal → simulate → mitigate → report) that
   offers both a vectorised side (fast research) and an event-driven side (realistic fills).
 
@@ -192,6 +194,9 @@ every scorecard ran on the default window. Fixed; the table above is the first s
 whose window matches its caption.
 
 ### 3.4 Portfolio (K-Means + momentum-alpha, BTC/ETH/SOL/ADA/XRP/USDT, 120d)
+
+*Run at the original exit defaults, before the Section 3.2 change; it has not been re-run on
+the repaired settings, so it is not directly comparable with Section 3.3.*
 - K-Means clusters real data, ranking each cluster by its characteristic mean-return/vol
   profile; the best-performing cluster's top-N names are held equal-weight (weights in CSV)
   across 348 rebalances.
@@ -211,8 +216,10 @@ whose window matches its caption.
   came from the bar size and the take-profit rather than the signal, but the repaired
   configuration still is not a proven edge: its three-year profit sits in one trade and does
   not transfer in magnitude to ETH.
-- Ichimoku/momentum/divergence PF < 1; calendar/hurst share costs-heavy high-frequency
-  turnover (fees dominated) — educationally useful, commercially not proven.
+- At the original defaults every profit factor was below 1. At the repaired defaults
+  (Section 3.3) Ichimoku reaches PF 1.57 and momentum 1.36, while divergence (0.48),
+  Hurst (0.54) and calendar (0.58) stay below 1: their turnover — up to 1,839 trades in
+  three years — hands the capital to fees. Educationally useful, commercially unproven.
 - Parameter sensitivity is now covered for Ichimoku (384 configurations, 1h→1d, two data
   windows, two assets, out-of-sample selection); the other strategies still run at their
   original settings and have had no equivalent sweep.
@@ -226,6 +233,9 @@ whose window matches its caption.
 ```bash
 pip install -r requirements.txt
 python main.py fetch --symbol BTC/USDT --timeframe 1h --days 180
+# Section 3.1 figures predate the Section 3.2 change: to reproduce them, restore the original
+# exits per strategy, e.g.
+#   python main.py backtest --timeframe 1h --days 180 --preset crypto --take-profit --trailing none
 python scripts/compare_all.py --symbol BTC/USDT --timeframe 1h --days 180
 python main.py calendar|divergence|hurst --source exchange --symbol BTC/USDT
 python main.py portfolio --source exchange --timeframe 1h --days 120
@@ -244,8 +254,9 @@ python main.py backtest --symbol ETH/USDT --days 1100    # cross-asset check
 53 unit tests (`pytest`) — causality/no-look-ahead checks, synthetic regime-switching data,
 cointegration/Hurst/KMeans/calendar/divergence/portfolio behaviour, and a research/production
 parity test in which replaying bars through the live engine reproduces the event-driven
-backtest trade for trade. The ADF stationarity test needs `statsmodels` installed; without it
-`adf_test` returns NaN and that one test fails.
+backtest trade for trade. All 53 pass on the development machine. The ADF stationarity test
+needs `statsmodels` (listed in `requirements.txt`); without it `adf_test` returns NaN by
+design and that single test fails.
 
 ## 6. Coverage vs syllabus
 - Intermediate topics covered: Ichimoku, calendar anomalies, Aroon/RSI divergence,
